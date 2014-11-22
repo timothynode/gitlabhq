@@ -10,8 +10,11 @@ class Repository
     nil
   end
 
+  # Return absolute path to repository
   def path_to_repo
-    @path_to_repo ||= File.join(Gitlab.config.gitlab_shell.repos_path, path_with_namespace + ".git")
+    @path_to_repo ||= File.expand_path(
+      File.join(Gitlab.config.gitlab_shell.repos_path, path_with_namespace + ".git")
+    )
   end
 
   def exists?
@@ -22,14 +25,16 @@ class Repository
     raw_repository.empty?
   end
 
-  def commit(id = nil)
+  def commit(id = 'HEAD')
     return nil unless raw_repository
     commit = Gitlab::Git::Commit.find(raw_repository, id)
     commit = Commit.new(commit) if commit
     commit
+  rescue Rugged::OdbError => ex
+    nil
   end
 
-  def commits(ref, path = nil, limit = nil, offset = nil)
+  def commits(ref, path = nil, limit = nil, offset = nil, skip_merges = false)
     commits = Gitlab::Git::Commit.where(
       repo: raw_repository,
       ref: ref,
@@ -61,10 +66,10 @@ class Repository
     gitlab_shell.add_branch(path_with_namespace, branch_name, ref)
   end
 
-  def add_tag(tag_name, ref)
+  def add_tag(tag_name, ref, message = nil)
     Rails.cache.delete(cache_key(:tag_names))
 
-    gitlab_shell.add_tag(path_with_namespace, tag_name, ref)
+    gitlab_shell.add_tag(path_with_namespace, tag_name, ref, message)
   end
 
   def rm_branch(branch_name)
@@ -128,13 +133,24 @@ class Repository
     Rails.cache.delete(cache_key(:commit_count))
     Rails.cache.delete(cache_key(:graph_log))
     Rails.cache.delete(cache_key(:readme))
+    Rails.cache.delete(cache_key(:version))
     Rails.cache.delete(cache_key(:contribution_guide))
   end
 
   def graph_log
     Rails.cache.fetch(cache_key(:graph_log)) do
-      stats = Gitlab::Git::GitStats.new(raw, root_ref)
-      stats.parsed_log
+      commits = raw_repository.log(limit: 6000, skip_merges: true,
+                                   ref: root_ref)
+      commits.map do |rugged_commit|
+        commit = Gitlab::Git::Commit.new(rugged_commit)
+
+        {
+          author_name: commit.author_name.force_encoding('UTF-8'),
+          author_email: commit.author_email.force_encoding('UTF-8'),
+          additions: commit.stats.additions,
+          deletions: commit.stats.deletions
+        }
+      end
     end
   end
 
@@ -156,9 +172,21 @@ class Repository
     Gitlab::Git::Blob.find(self, sha, path)
   end
 
+  def blob_by_oid(oid)
+    Gitlab::Git::Blob.raw(self, oid)
+  end
+
   def readme
     Rails.cache.fetch(cache_key(:readme)) do
       tree(:head).readme
+    end
+  end
+
+  def version
+    Rails.cache.fetch(cache_key(:version)) do
+      tree(:head).blobs.find do |file|
+        file.name.downcase == 'version'
+      end
     end
   end
 
@@ -207,12 +235,15 @@ class Repository
   end
 
   def last_commit_for_path(sha, path)
-    commits(sha, path, 1).last
+    args = %W(git rev-list --max-count 1 #{sha} -- #{path})
+    sha = Gitlab::Popen.popen(args, path_to_repo).first.strip
+    commit(sha)
   end
 
   # Remove archives older than 2 hours
   def clean_old_archives
-    Gitlab::Popen.popen(%W(find #{Gitlab.config.gitlab.repository_downloads_path} -mmin +120 -delete))
+    repository_downloads_path = Gitlab.config.gitlab.repository_downloads_path
+    Gitlab::Popen.popen(%W(find #{repository_downloads_path} -not -path #{repository_downloads_path} -mmin +120 -delete))
   end
 
   def branches_sorted_by(value)
@@ -227,6 +258,58 @@ class Repository
       end
     else
       branches
+    end
+  end
+
+  def contributors
+    commits = self.commits(nil, nil, 2000, 0, true)
+
+    commits.group_by(&:author_email).map do |email, commits|
+      contributor = Gitlab::Contributor.new
+      contributor.email = email
+
+      commits.each do |commit|
+        if contributor.name.blank?
+          contributor.name = commit.author_name
+        end
+
+        contributor.commits += 1
+      end
+
+      contributor
+    end
+  end
+
+  def blob_for_diff(commit, diff)
+    file = blob_at(commit.id, diff.new_path)
+
+    unless file
+      file = prev_blob_for_diff(commit, diff)
+    end
+
+    file
+  end
+
+  def prev_blob_for_diff(commit, diff)
+    if commit.parent_id
+      blob_at(commit.parent_id, diff.old_path)
+    end
+  end
+
+  def branch_names_contains(sha)
+    args = %W(git branch --contains #{sha})
+    names = Gitlab::Popen.popen(args, path_to_repo).first
+
+    if names.respond_to?(:split)
+      names = names.split("\n").map(&:strip)
+
+      names.each do |name|
+        name.slice! '* '
+      end
+
+      names
+    else
+      []
     end
   end
 end

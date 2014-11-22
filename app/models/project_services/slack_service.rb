@@ -2,28 +2,19 @@
 #
 # Table name: services
 #
-#  id          :integer          not null, primary key
-#  type        :string(255)
-#  title       :string(255)
-#  token       :string(255)
-#  project_id  :integer          not null
-#  created_at  :datetime
-#  updated_at  :datetime
-#  active      :boolean          default(FALSE), not null
-#  project_url :string(255)
-#  subdomain   :string(255)
-#  room        :string(255)
-#  recipients  :text
-#  api_key     :string(255)
+#  id         :integer          not null, primary key
+#  type       :string(255)
+#  title      :string(255)
+#  project_id :integer          not null
+#  created_at :datetime
+#  updated_at :datetime
+#  active     :boolean          default(FALSE), not null
+#  properties :text
 #
 
 class SlackService < Service
-  attr_accessible :room
-  attr_accessible :subdomain
-
-  validates :room, presence: true, if: :activated?
-  validates :subdomain, presence: true, if: :activated?
-  validates :token, presence: true, if: :activated?
+  prop_accessor :webhook
+  validates :webhook, presence: true, if: :activated?
 
   def title
     'Slack'
@@ -39,21 +30,19 @@ class SlackService < Service
 
   def fields
     [
-      { type: 'text', name: 'subdomain', placeholder: '' },
-      { type: 'text', name: 'token',     placeholder: '' },
-      { type: 'text', name: 'room',      placeholder: 'Ex. #general' },
+      { type: 'text', name: 'webhook', placeholder: 'https://hooks.slack.com/services/...' }
     ]
   end
 
   def execute(push_data)
+    return unless webhook.present?
+
     message = SlackMessage.new(push_data.merge(
       project_url: project_url,
       project_name: project_name
     ))
 
-    notifier = Slack::Notifier.new(subdomain, token)
-    notifier.channel = room
-    notifier.username = 'GitLab'
+    notifier = Slack::Notifier.new(webhook)
     notifier.ping(message.pretext, attachments: message.attachments)
   end
 

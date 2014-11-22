@@ -21,14 +21,24 @@ module TreeHelper
     tree.html_safe
   end
 
+  def render_readme(readme)
+    if gitlab_markdown?(readme.name)
+      preserve(markdown(readme.data))
+    elsif markup?(readme.name)
+      render_markup(readme.name, readme.data)
+    else
+      simple_format(readme.data)
+    end
+  end
+
   # Return an image icon depending on the file type
   #
   # type - String type of the tree item; either 'folder' or 'file'
   def tree_icon(type)
     icon_class = if type == 'folder'
-                   'icon-folder-close'
+                   'fa fa-folder'
                  else
-                   'icon-file-alt'
+                   'fa fa-file-o'
                  end
 
     content_tag :i, nil, class: icon_class
@@ -36,24 +46,6 @@ module TreeHelper
 
   def tree_hex_class(content)
     "file_#{hexdigest(content.name)}"
-  end
-
-  # Public: Determines if a given filename is compatible with GitHub::Markup.
-  #
-  # filename - Filename string to check
-  #
-  # Returns boolean
-  def markup?(filename)
-    filename.downcase.end_with?(*%w(.textile .rdoc .org .creole
-                                    .mediawiki .rst .adoc .asciidoc .pod))
-  end
-
-  def gitlab_markdown?(filename)
-    filename.downcase.end_with?(*%w(.mdown .md .markdown))
-  end
-
-  def plain_text_readme? filename
-    filename =~ /^README(.txt)?$/i
   end
 
   # Simple shortcut to File.join
@@ -74,7 +66,7 @@ module TreeHelper
   def tree_breadcrumbs(tree, max_links = 2)
     if @path.present?
       part_path = ""
-      parts = @path.split("\/")
+      parts = @path.split('/')
 
       yield('..', nil) if parts.count > max_links
 
@@ -88,7 +80,7 @@ module TreeHelper
     end
   end
 
-  def up_dir_path tree
+  def up_dir_path(tree)
     file = File.join(@path, "..")
     tree_join(@ref, file)
   end
@@ -98,7 +90,7 @@ module TreeHelper
   end
 
   def editing_preview_title(filename)
-    if gitlab_markdown?(filename) || markup?(filename)
+    if Gitlab::MarkdownHelper.previewable?(filename)
       'Preview'
     else
       'Diff'

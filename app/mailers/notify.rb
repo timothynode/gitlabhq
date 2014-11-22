@@ -11,6 +11,7 @@ class Notify < ActionMailer::Base
   add_template_helper ApplicationHelper
   add_template_helper GitlabMarkdownHelper
   add_template_helper MergeRequestsHelper
+  add_template_helper EmailsHelper
 
   default_url_options[:host]     = Gitlab.config.gitlab.host
   default_url_options[:protocol] = Gitlab.config.gitlab.protocol
@@ -18,7 +19,6 @@ class Notify < ActionMailer::Base
   default_url_options[:script_name] = Gitlab.config.gitlab.relative_url_root
 
   default from: Proc.new { default_sender_address.format }
-  default to:   Proc.new { project_sender_address.format }
   default reply_to: "noreply@#{Gitlab.config.gitlab.host}"
 
   # Just send email with 2 seconds delay
@@ -33,17 +33,6 @@ class Notify < ActionMailer::Base
     address = Mail::Address.new(Gitlab.config.gitlab.email_from)
     address.display_name = "GitLab"
     address
-  end
-
-  # The default email address to send emails to. Includes the project name if possible.
-  def project_sender_address
-    if @project
-      address = default_sender_address
-      address.display_name = @project.name_with_namespace
-      address
-    else
-      default_sender_address
-    end
   end
 
   # Return an email address that displays the name of the sender.
@@ -113,11 +102,7 @@ class Notify < ActionMailer::Base
   #
   # See: mail_answer_thread
   def mail_new_thread(model, headers = {}, &block)
-    raise ArgumentError, '"To:" header will be overwritten; use "Cc:" or "Bcc:"' unless headers[:to].nil?
-    headers[:to] = project_sender_address.format
-
     headers['Message-ID'] = message_id(model)
-
     mail(headers, &block)
   end
 
@@ -128,12 +113,8 @@ class Notify < ActionMailer::Base
   #
   #  * have a subject that begin by 'Re: '
   #  * have a 'In-Reply-To' or 'References' header that references the original 'Message-ID'
-  #  * have stable 'From' and 'To' headers between messages of the same thread
   #
   def mail_answer_thread(model, headers = {}, &block)
-    raise ArgumentError, '"To:" header will be overwritten; use "Cc:" or "Bcc:"' unless headers[:to].nil?
-    headers[:to] = project_sender_address.format
-
     headers['In-Reply-To'] = message_id(model)
     headers['References'] = message_id(model)
 

@@ -10,9 +10,6 @@ end
 
 gem "rails", "~> 4.1.0"
 
-gem "protected_attributes"
-gem 'rails-observers'
-
 # Make links from text
 gem 'rails_autolink', '~> 1.1'
 
@@ -24,22 +21,23 @@ gem "mysql2", group: :mysql
 gem "pg", group: :postgres
 
 # Auth
-gem "devise", '3.0.4'
-gem "devise-async", '0.8.0'
+gem "devise", '3.2.4'
+gem "devise-async", '0.9.0'
 gem 'omniauth', "~> 1.1.3"
 gem 'omniauth-google-oauth2'
 gem 'omniauth-twitter'
 gem 'omniauth-github'
+gem 'omniauth-shibboleth'
 
 # Extracting information from a git repository
 # Provide access to Gitlab::Git library
-gem "gitlab_git", '~> 6.0'
+gem "gitlab_git", '7.0.0.rc12'
 
 # Ruby/Rack Git Smart-HTTP Server Handler
 gem 'gitlab-grack', '~> 2.0.0.pre', require: 'grack'
 
 # LDAP Auth
-gem 'gitlab_omniauth-ldap', '1.0.4', require: "omniauth-ldap"
+gem 'gitlab_omniauth-ldap', '1.2.0', require: "omniauth-ldap"
 
 # Git Wiki
 gem 'gollum-lib', '~> 3.0.0'
@@ -49,7 +47,6 @@ gem "gitlab-linguist", "~> 3.0.0", require: "linguist"
 
 # API
 gem "grape", "~> 0.6.1"
-# Replace with rubygems when nesteted entities get released
 gem "grape-entity", "~> 0.4.2"
 gem 'rack-cors', require: 'rack/cors'
 
@@ -73,8 +70,8 @@ gem "carrierwave"
 gem 'dropzonejs-rails'
 
 # for aws storage
-gem "fog", "~> 1.14", group: :aws
-gem "unf", group: :aws
+gem "fog", "~> 1.14"
+gem "unf"
 
 # Authorization
 gem "six"
@@ -82,16 +79,23 @@ gem "six"
 # Seed data
 gem "seed-fu"
 
+# Markup pipeline for GitLab
+gem 'html-pipeline-gitlab', '~> 0.1.0'
+
 # Markdown to HTML
-gem "redcarpet",     "~> 2.2.2"
 gem "github-markup"
-gem "org-ruby" # For rendering .org files
+
+# Required markup gems by github-markdown
+gem 'redcarpet', '~> 3.1.2'
+gem 'RedCloth'
+gem 'rdoc', '~>3.6'
+gem 'org-ruby', '= 0.9.9'
+gem 'creole', '~>0.3.6'
+gem 'wikicloth', '=0.8.1'
+gem 'asciidoctor', '= 0.1.4'
 
 # Diffs
 gem 'diffy', '~> 3.0.3'
-
-# Asciidoc to HTML
-gem  "asciidoctor"
 
 # Application server
 group :unicorn do
@@ -139,7 +143,7 @@ gem "gitlab-flowdock-git-hook", "~> 0.4.2"
 gem "gemnasium-gitlab-service", "~> 0.2"
 
 # Slack integration
-gem "slack-notifier", "~> 0.3.2"
+gem "slack-notifier", "~> 1.0.0"
 
 # d3
 gem "d3_rails", "~> 3.1.4"
@@ -155,6 +159,9 @@ gem "rack-attack"
 
 # Ace editor
 gem 'ace-rails-ap'
+
+# Keyboard shortcuts
+gem 'mousetrap-rails'
 
 # Semantic UI Sass for Sidebar
 gem 'semantic-ui-sass', '~> 0.16.1.0'
@@ -173,10 +180,13 @@ gem "jquery-ui-rails"
 gem "jquery-scrollto-rails"
 gem "raphael-rails", "~> 2.1.2"
 gem 'bootstrap-sass', '~> 3.0'
-gem "font-awesome-rails", '~> 3.2'
+gem "font-awesome-rails", '~> 4.2'
 gem "gitlab_emoji", "~> 0.0.1.1"
 gem "gon", '~> 5.0.0'
 gem 'nprogress-rails'
+gem 'request_store'
+gem "virtus"
+gem 'addressable'
 
 group :development do
   gem "annotate", "~> 2.6.0.beta2"
@@ -229,7 +239,7 @@ group :development, :test do
 
   gem 'jasmine', '2.0.2'
 
-  gem "spring", '1.1.1'
+  gem "spring", '1.1.3'
   gem "spring-commands-rspec", '1.0.1'
   gem "spring-commands-spinach", '1.0.0'
 end
@@ -245,3 +255,5 @@ end
 group :production do
   gem "gitlab_meta", '7.0'
 end
+
+gem "newrelic_rpm"

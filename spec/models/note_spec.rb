@@ -27,8 +27,6 @@ describe Note do
   end
 
   describe "Mass assignment" do
-    it { should_not allow_mass_assignment_of(:author) }
-    it { should_not allow_mass_assignment_of(:author_id) }
   end
 
   describe "Validation" do
@@ -230,7 +228,7 @@ describe Note do
 
       it { should be_valid }
       its(:noteable) { should == issue }
-      its(:note) { should == "_mentioned in commit #{commit.sha[0..5]}_" }
+      its(:note) { should == "_mentioned in commit #{commit.sha}_" }
     end
 
     context 'merge request from an issue' do
@@ -251,6 +249,12 @@ describe Note do
       its(:note) { should == "_mentioned in merge request !#{mergereq.iid}_" }
     end
 
+    context 'commit contained in a merge request' do
+      subject { Note.create_cross_reference_note(mergereq.commits.first, mergereq, author, project) }
+
+      it { should be_nil }
+    end
+
     context 'commit from issue' do
       subject { Note.create_cross_reference_note(commit, issue, author, project) }
 
@@ -260,14 +264,25 @@ describe Note do
       its(:commit_id) { should == commit.id }
       its(:note) { should == "_mentioned in issue ##{issue.iid}_" }
     end
+
+    context 'commit from commit' do
+      let(:parent_commit) { commit.parents.first }
+      subject { Note.create_cross_reference_note(commit, parent_commit, author, project) }
+
+      it { should be_valid }
+      its(:noteable_type) { should == "Commit" }
+      its(:noteable_id) { should be_nil }
+      its(:commit_id) { should == commit.id }
+      its(:note) { should == "_mentioned in commit #{parent_commit.id}_" }
+    end
   end
 
   describe '#cross_reference_exists?' do
     let(:project) { create :project }
     let(:author) { create :user }
     let(:issue) { create :issue }
-    let(:commit0) { double 'commit0', gfm_reference: 'commit 123456' }
-    let(:commit1) { double 'commit1', gfm_reference: 'commit 654321' }
+    let(:commit0) { project.repository.commit }
+    let(:commit1) { project.repository.commit('HEAD~2') }
 
     before do
       Note.create_cross_reference_note(issue, commit0, author, project)
@@ -279,6 +294,15 @@ describe Note do
 
     it 'detects if a mentionable has not already been mentioned' do
       Note.cross_reference_exists?(issue, commit1).should be_false
+    end
+
+    context 'commit on commit' do
+      before do
+        Note.create_cross_reference_note(commit0, commit1, author, project)
+      end
+
+      it { Note.cross_reference_exists?(commit0, commit1).should be_true }
+      it { Note.cross_reference_exists?(commit1, commit0).should be_false }
     end
   end
 
@@ -323,8 +347,8 @@ describe Note do
 
     describe :read do
       before do
-        @p1.users_projects.create(user: @u2, project_access: UsersProject::GUEST)
-        @p2.users_projects.create(user: @u3, project_access: UsersProject::GUEST)
+        @p1.project_members.create(user: @u2, access_level: ProjectMember::GUEST)
+        @p2.project_members.create(user: @u3, access_level: ProjectMember::GUEST)
       end
 
       it { @abilities.allowed?(@u1, :read_note, @p1).should be_false }
@@ -334,8 +358,8 @@ describe Note do
 
     describe :write do
       before do
-        @p1.users_projects.create(user: @u2, project_access: UsersProject::DEVELOPER)
-        @p2.users_projects.create(user: @u3, project_access: UsersProject::DEVELOPER)
+        @p1.project_members.create(user: @u2, access_level: ProjectMember::DEVELOPER)
+        @p2.project_members.create(user: @u3, access_level: ProjectMember::DEVELOPER)
       end
 
       it { @abilities.allowed?(@u1, :write_note, @p1).should be_false }
@@ -345,9 +369,9 @@ describe Note do
 
     describe :admin do
       before do
-        @p1.users_projects.create(user: @u1, project_access: UsersProject::REPORTER)
-        @p1.users_projects.create(user: @u2, project_access: UsersProject::MASTER)
-        @p2.users_projects.create(user: @u3, project_access: UsersProject::MASTER)
+        @p1.project_members.create(user: @u1, access_level: ProjectMember::REPORTER)
+        @p1.project_members.create(user: @u2, access_level: ProjectMember::MASTER)
+        @p2.project_members.create(user: @u3, access_level: ProjectMember::MASTER)
       end
 
       it { @abilities.allowed?(@u1, :admin_note, @p1).should be_false }

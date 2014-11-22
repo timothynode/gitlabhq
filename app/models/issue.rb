@@ -15,7 +15,6 @@
 #  milestone_id :integer
 #  state        :string(255)
 #  iid          :integer
-#  attachment   :string(255)
 #
 
 require 'carrierwave/orm/activerecord'
@@ -24,6 +23,7 @@ require 'file_size_validator'
 class Issue < ActiveRecord::Base
   include Issuable
   include InternalId
+  include Taskable
 
   ActsAsTaggableOn.strict_case_match = true
 
@@ -32,12 +32,6 @@ class Issue < ActiveRecord::Base
 
   scope :of_group, ->(group) { where(project_id: group.project_ids) }
   scope :of_user_team, ->(team) { where(project_id: team.project_ids, assignee_id: team.member_ids) }
-
-  attr_accessible :title, :assignee_id, :position, :description,
-                  :milestone_id, :label_list, :state_event
-
-  acts_as_taggable_on :labels
-
   scope :cared, ->(user) { where(assignee_id: user) }
   scope :open_for, ->(user) { opened.assigned_to(user) }
 
@@ -55,6 +49,10 @@ class Issue < ActiveRecord::Base
     state :closed
   end
 
+  def hook_attrs
+    attributes
+  end
+
   # Mentionable overrides.
 
   def gfm_reference
@@ -70,8 +68,11 @@ class Issue < ActiveRecord::Base
   # Thus it will automatically generate a new fragment
   # when the event is updated because the key changes.
   def reset_events_cache
-    Event.where(target_id: self.id, target_type: 'Issue').
-      order('id DESC').limit(100).
-      update_all(updated_at: Time.now)
+    Event.reset_event_cache_for(self)
+  end
+
+  # To allow polymorphism with MergeRequest.
+  def source_project
+    project
   end
 end

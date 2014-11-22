@@ -58,8 +58,8 @@
 }
 
 @mixin md-typography {
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.5;
 
   img {
     max-width: 100%;
@@ -93,7 +93,7 @@
 
   blockquote p {
     color: #888;
-    font-size: 14px;
+    font-size: 15px;
     line-height: 1.5;
   }
 
@@ -131,4 +131,15 @@
   vertical-align: top;
   white-space: nowrap;
   max-width: $max_width;
+}
+
+@mixin panel-colored {
+  border: none;
+  background: $box_bg;
+  @include box-shadow(0 1px 1px rgba(0, 0, 0, 0.09));
+
+  .panel-heading {
+    font-weight: bold;
+    background-color: $box_bg;
+  }
 }

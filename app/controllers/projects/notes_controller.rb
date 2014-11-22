@@ -21,7 +21,7 @@ class Projects::NotesController < Projects::ApplicationController
   end
 
   def create
-    @note = Notes::CreateService.new(project, current_user, params).execute
+    @note = Notes::CreateService.new(project, current_user, note_params).execute
 
     respond_to do |format|
       format.json { render_note_json(@note) }
@@ -30,8 +30,10 @@ class Projects::NotesController < Projects::ApplicationController
   end
 
   def update
-    note.update_attributes(params[:note])
-    note.reset_events_cache
+    if note.editable?
+      note.update_attributes(note_params)
+      note.reset_events_cache
+    end
 
     respond_to do |format|
       format.json { render_note_json(note) }
@@ -40,8 +42,10 @@ class Projects::NotesController < Projects::ApplicationController
   end
 
   def destroy
-    note.destroy
-    note.reset_events_cache
+    if note.editable?
+      note.destroy
+      note.reset_events_cache
+    end
 
     respond_to do |format|
       format.js { render nothing: true }
@@ -85,16 +89,35 @@ class Projects::NotesController < Projects::ApplicationController
     )
   end
 
+  def note_to_discussion_with_diff_html(note)
+    return unless note.for_diff_line?
+
+    render_to_string(
+      "projects/notes/_discussion",
+      layout: false,
+      formats: [:html],
+      locals: { discussion_notes: [note] }
+    )
+  end
+
   def render_note_json(note)
     render json: {
       id: note.id,
       discussion_id: note.discussion_id,
       html: note_to_html(note),
-      discussion_html: note_to_discussion_html(note)
+      discussion_html: note_to_discussion_html(note),
+      discussion_with_diff_html: note_to_discussion_with_diff_html(note)
     }
   end
 
   def authorize_admin_note!
     return access_denied! unless can?(current_user, :admin_note, note)
+  end
+
+  def note_params
+    params.require(:note).permit(
+      :note, :noteable, :noteable_id, :noteable_type, :project_id,
+      :attachment, :line_code, :commit_id
+    )
   end
 end

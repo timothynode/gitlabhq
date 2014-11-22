@@ -1,16 +1,21 @@
 module Issues
   class UpdateService < Issues::BaseService
     def execute(issue)
-      state = params.delete('state_event') || params.delete(:state_event)
+      state = params[:state_event]
 
       case state
       when 'reopen'
         Issues::ReopenService.new(project, current_user, {}).execute(issue)
       when 'close'
         Issues::CloseService.new(project, current_user, {}).execute(issue)
+      when 'task_check'
+        issue.update_nth_task(params[:task_num].to_i, true)
+      when 'task_uncheck'
+        issue.update_nth_task(params[:task_num].to_i, false)
       end
 
-      if params.present? && issue.update_attributes(params)
+      if params.present? && issue.update_attributes(params.except(:state_event,
+                                                                  :task_num))
         issue.reset_events_cache
 
         if issue.previous_changes.include?('milestone_id')
@@ -23,7 +28,7 @@ module Issues
         end
 
         issue.notice_added_references(issue.project, current_user)
-        execute_hooks(issue)
+        execute_hooks(issue, 'update')
       end
 
       issue

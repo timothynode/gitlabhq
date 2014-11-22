@@ -16,7 +16,8 @@ module API
 
     class UserFull < User
       expose :email
-      expose :theme_id, :color_scheme_id, :extern_uid, :provider
+      expose :theme_id, :color_scheme_id, :extern_uid, :provider, \
+             :projects_limit
       expose :can_create_group?, as: :can_create_group
       expose :can_create_project?, as: :can_create_project
     end
@@ -30,7 +31,8 @@ module API
     end
 
     class ProjectHook < Hook
-      expose :project_id, :push_events, :issues_events, :merge_requests_events
+      expose :project_id, :push_events
+      expose :issues_events, :merge_requests_events, :tag_push_events
     end
 
     class ForkedFromProject < Grape::Entity
@@ -53,8 +55,8 @@ module API
     end
 
     class ProjectMember < UserBasic
-      expose :project_access, as: :access_level do |user, options|
-        options[:project].users_projects.find_by(user_id: user.id).project_access
+      expose :access_level do |user, options|
+        options[:project].project_members.find_by(user_id: user.id).access_level
       end
     end
 
@@ -67,8 +69,27 @@ module API
     end
 
     class GroupMember < UserBasic
-      expose :group_access, as: :access_level do |user, options|
-        options[:group].users_groups.find_by(user_id: user.id).group_access
+      expose :access_level do |user, options|
+        options[:group].group_members.find_by(user_id: user.id).access_level
+      end
+    end
+
+    class RepoTag < Grape::Entity
+      expose :name
+      expose :message do |repo_obj, _options|
+        if repo_obj.respond_to?(:message)
+          repo_obj.message
+        else
+          nil
+        end
+      end
+
+      expose :commit do |repo_obj, options|
+        if repo_obj.respond_to?(:commit)
+          repo_obj.commit
+        elsif options[:project]
+          options[:project].repository.commit(repo_obj.target)
+        end
       end
     end
 
@@ -102,6 +123,7 @@ module API
 
     class RepoCommit < Grape::Entity
       expose :id, :short_id, :title, :author_name, :author_email, :created_at
+      expose :safe_message, as: :message
     end
 
     class RepoCommitDetail < RepoCommit
@@ -126,7 +148,7 @@ module API
     end
 
     class Issue < ProjectEntity
-      expose :label_list, as: :labels
+      expose :label_names, as: :labels
       expose :milestone, using: Entities::Milestone
       expose :assignee, :author, using: Entities::UserBasic
     end
@@ -135,7 +157,9 @@ module API
       expose :target_branch, :source_branch, :upvotes, :downvotes
       expose :author, :assignee, using: Entities::UserBasic
       expose :source_project_id, :target_project_id
-      expose :label_list, as: :labels
+      expose :label_names, as: :labels
+      expose :description
+      expose :milestone, using: Entities::Milestone
     end
 
     class SSHKey < Grape::Entity
@@ -155,11 +179,25 @@ module API
       expose :author, using: Entities::UserBasic
     end
 
+    class CommitNote < Grape::Entity
+      expose :note
+      expose(:path) { |note| note.diff_file_name }
+      expose(:line) { |note| note.diff_new_line }
+      expose(:line_type) { |note| note.diff_line_type }
+      expose :author, using: Entities::UserBasic
+    end
+
     class Event < Grape::Entity
       expose :title, :project_id, :action_name
       expose :target_id, :target_type, :author_id
       expose :data, :target_title
       expose :created_at
+
+      expose :author_username do |event, options|
+        if event.author
+          event.author.username
+        end
+      end
     end
 
     class Namespace < Grape::Entity
@@ -167,31 +205,31 @@ module API
     end
 
     class ProjectAccess < Grape::Entity
-      expose :project_access, as: :access_level
+      expose :access_level
       expose :notification_level
     end
 
     class GroupAccess < Grape::Entity
-      expose :group_access, as: :access_level
+      expose :access_level
       expose :notification_level
     end
 
     class ProjectWithAccess < Project
       expose :permissions do
         expose :project_access, using: Entities::ProjectAccess do |project, options|
-          project.users_projects.find_by(user_id: options[:user].id)
+          project.project_members.find_by(user_id: options[:user].id)
         end
 
         expose :group_access, using: Entities::GroupAccess do |project, options|
           if project.group
-            project.group.users_groups.find_by(user_id: options[:user].id)
+            project.group.group_members.find_by(user_id: options[:user].id)
           end
         end
       end
     end
 
     class Label < Grape::Entity
-      expose :name
+      expose :name, :color
     end
 
     class RepoDiff < Grape::Entity
@@ -201,13 +239,13 @@ module API
 
     class Compare < Grape::Entity
       expose :commit, using: Entities::RepoCommit do |compare, options|
-        if compare.commit
-          Commit.new compare.commit
-        end
+        Commit.decorate(compare.commits).last
       end
+
       expose :commits, using: Entities::RepoCommit do |compare, options|
-        Commit.decorate compare.commits
+        Commit.decorate(compare.commits)
       end
+
       expose :diffs, using: Entities::RepoDiff do |compare, options|
         compare.diffs
       end
@@ -217,6 +255,10 @@ module API
       end
 
       expose :same, as: :compare_same_ref
+    end
+
+    class Contributor < Grape::Entity
+      expose :name, :email, :commits, :additions, :deletions
     end
   end
 end

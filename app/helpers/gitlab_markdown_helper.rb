@@ -51,6 +51,16 @@ module GitlabMarkdownHelper
     @markdown.render(text).html_safe
   end
 
+  # Return the first line of +text+, up to +max_chars+, after parsing the line
+  # as Markdown.  HTML tags in the parsed output are not counted toward the
+  # +max_chars+ limit.  If the length limit falls within a tag's contents, then
+  # the tag contents are truncated without removing the closing tag.
+  def first_line_in_markdown(text, max_chars = nil)
+    md = markdown(text).strip
+
+    truncate_visible(md, max_chars || md.length) if md.present?
+  end
+
   def render_wiki_content(wiki_page)
     if wiki_page.format == :markdown
       markdown(wiki_page.content)
@@ -63,10 +73,19 @@ module GitlabMarkdownHelper
     paths = extract_paths(text)
 
     paths.uniq.each do |file_path|
-      new_path = rebuild_path(file_path)
-      # Finds quoted path so we don't replace other mentions of the string
-      # eg. "doc/api" will be replaced and "/home/doc/api/text" won't
-      text.gsub!("\"#{file_path}\"", "\"/#{new_path}\"")
+      # If project does not have repository
+      # its nothing to rebuild
+      #
+      # TODO: pass project variable to markdown helper instead of using
+      # instance variable. Right now it generates invalid path for pages out
+      # of project scope. Example: search results where can be rendered markdown
+      # from different projects
+      if @repository && @repository.exists? && !@repository.empty?
+        new_path = rebuild_path(file_path)
+        # Finds quoted path so we don't replace other mentions of the string
+        # eg. "doc/api" will be replaced and "/home/doc/api/text" won't
+        text.gsub!("\"#{file_path}\"", "\"/#{new_path}\"")
+      end
     end
 
     text
@@ -91,7 +110,12 @@ module GitlabMarkdownHelper
   end
 
   def link_to_ignore?(link)
-    ignored_protocols.map{ |protocol| link.include?(protocol) }.any?
+    if link =~ /\#\w+/
+      # ignore anchors like <a href="#my-header">
+      true
+    else
+      ignored_protocols.map{ |protocol| link.include?(protocol) }.any?
+    end
   end
 
   def ignored_protocols
@@ -129,7 +153,7 @@ module GitlabMarkdownHelper
   # If we are at doc/api/README.md and the README.md contains relative links like [Users](users.md)
   # this takes the request path(doc/api/README.md), and replaces the README.md with users.md so the path looks like doc/api/users.md
   # If we are at doc/api and the README.md shown in below the tree view
-  # this takes the rquest path(doc/api) and adds users.md so the path looks like doc/api/users.md
+  # this takes the request path(doc/api) and adds users.md so the path looks like doc/api/users.md
   def build_nested_path(path, request_path)
     return request_path if path == ""
     return path unless request_path
@@ -169,13 +193,65 @@ module GitlabMarkdownHelper
   def current_sha
     if @commit
       @commit.id
-    else
-      @repository.head_commit.sha
+    elsif @repository && !@repository.empty?
+      if @ref
+        @repository.commit(@ref).try(:sha)
+      else
+        @repository.head_commit.sha
+      end
     end
   end
 
   # We will assume that if no ref exists we can point to master
   def correct_ref
     @ref ? @ref : "master"
+  end
+
+  private
+
+  # Return +text+, truncated to +max_chars+ characters, excluding any HTML
+  # tags.
+  def truncate_visible(text, max_chars)
+    doc = Nokogiri::HTML.fragment(text)
+    content_length = 0
+    truncated = false
+
+    doc.traverse do |node|
+      if node.text? || node.content.empty?
+        if truncated
+          node.remove
+          next
+        end
+
+        # Handle line breaks within a node
+        if node.content.strip.lines.length > 1
+          node.content = "#{node.content.lines.first.chomp}..."
+          truncated = true
+        end
+
+        num_remaining = max_chars - content_length
+        if node.content.length > num_remaining
+          node.content = node.content.truncate(num_remaining)
+          truncated = true
+        end
+        content_length += node.content.length
+      end
+
+      truncated = truncate_if_block(node, truncated)
+    end
+
+    doc.to_html
+  end
+
+  # Used by #truncate_visible.  If +node+ is the first block element, and the
+  # text hasn't already been truncated, then append "..." to the node contents
+  # and return true.  Otherwise return false.
+  def truncate_if_block(node, truncated)
+    if node.element? && node.description.block? && !truncated
+      node.content = "#{node.content}..." if node.next_sibling
+      true
+    else
+      truncated
+    end
   end
 end

@@ -47,12 +47,23 @@ Gitlab::Application.routes.draw do
   get "/s/:username" => "snippets#user_index", as: :user_snippets, constraints: { username: /.*/ }
 
   #
-  # Public namespace
+  # Explroe area
   #
-  namespace :public do
-    resources :projects, only: [:index]
-    root to: "projects#index"
+  namespace :explore do
+    resources :projects, only: [:index] do
+      collection do
+        get :trending
+        get :starred
+      end
+    end
+
+    resources :groups, only: [:index]
+    root to: "projects#trending"
   end
+
+  # Compatibility with old routing
+  get 'public' => "explore/projects#index"
+  get 'public/projects' => "explore/projects#index"
 
   #
   # Attachments serving
@@ -68,6 +79,7 @@ Gitlab::Application.routes.draw do
         put :team_update
         put :block
         put :unblock
+        delete 'remove/:email_id', action: 'remove_email', as: 'remove_email'
       end
     end
 
@@ -149,33 +161,39 @@ Gitlab::Application.routes.draw do
       get :projects
     end
 
-    resources :users_groups, only: [:create, :update, :destroy]
     scope module: :groups do
+      resources :group_members, only: [:create, :update, :destroy]
       resource :avatar, only: [:destroy]
+      resources :milestones
     end
   end
 
   resources :projects, constraints: { id: /[^\/]+/ }, only: [:new, :create]
 
-  devise_for :users, controllers: { omniauth_callbacks: :omniauth_callbacks, registrations: :registrations , passwords: :passwords}
+  devise_for :users, controllers: { omniauth_callbacks: :omniauth_callbacks, registrations: :registrations , passwords: :passwords, sessions: :sessions, confirmations: :confirmations }
 
+  devise_scope :user do
+    get "/users/auth/:provider/omniauth_error" => "omniauth_callbacks#omniauth_error", as: :omniauth_error
+  end
   #
   # Project Area
   #
   resources :projects, constraints: { id: /[a-zA-Z.0-9_\-]+\/[a-zA-Z.0-9_\-]+/ }, except: [:new, :create, :index], path: "/" do
     member do
       put :transfer
-      post :fork
       post :archive
       post :unarchive
       post :upload_image
+      post :toggle_star
       get :autocomplete_sources
       get :import
       put :retry_import
     end
 
     scope module: :projects do
-      resources :blob,      only: [:show, :destroy], constraints: {id: /.+/}
+      resources :blob, only: [:show, :destroy], constraints: { id: /.+/ } do
+        get :diff, on: :member
+      end
       resources :raw,       only: [:show], constraints: {id: /.+/}
       resources :tree,      only: [:show], constraints: {id: /.+/, format: /(html|js)/ }
       resources :edit_tree, only: [:show, :update], constraints: { id: /.+/ }, path: 'edit' do
@@ -187,15 +205,19 @@ Gitlab::Application.routes.draw do
       resources :compare,   only: [:index, :create]
       resources :blame,     only: [:show], constraints: {id: /.+/}
       resources :network,   only: [:show], constraints: {id: /(?:[^.]|\.(?!json$))+/, format: /json/}
-      resources :graphs,    only: [:show], constraints: {id: /(?:[^.]|\.(?!json$))+/, format: /json/}
+      resources :graphs,    only: [:show], constraints: {id: /(?:[^.]|\.(?!json$))+/, format: /json/} do
+        member do
+          get :commits
+        end
+      end
 
       match "/compare/:from...:to" => "compare#show", as: "compare", via: [:get, :post], constraints: {from: /.+/, to: /.+/}
 
-        resources :snippets, constraints: {id: /\d+/} do
-          member do
-            get "raw"
-          end
+      resources :snippets, constraints: {id: /\d+/} do
+        member do
+          get "raw"
         end
+      end
 
       resources :wikis, only: [:show, :edit, :destroy, :create], constraints: {id: /[a-zA-Z.0-9_\-\/]+/} do
         collection do
@@ -209,9 +231,10 @@ Gitlab::Application.routes.draw do
         end
       end
 
+      resource :fork, only: [:new, :create]
+
       resource :repository, only: [:show] do
         member do
-          get "stats"
           get "archive", constraints: { format: Gitlab::Regex.archive_formats_regex }
         end
       end
@@ -279,7 +302,7 @@ Gitlab::Application.routes.draw do
         end
       end
 
-      resources :labels, only: [:index] do
+      resources :labels, constraints: {id: /\d+/} do
         collection do
           post :generate
         end

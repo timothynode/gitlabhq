@@ -3,6 +3,7 @@ require 'spec_helper'
 describe Notify do
   include EmailSpec::Helpers
   include EmailSpec::Matchers
+  include RepoHelpers
 
   let(:gitlab_sender) { Gitlab.config.gitlab.email_from }
   let(:recipient) { create(:user, email: 'recipient@example.com') }
@@ -10,7 +11,7 @@ describe Notify do
 
   shared_examples 'a multiple recipients email' do
     it 'is sent to the given recipient' do
-      should cc_to recipient.email
+      should deliver_to recipient.email
     end
   end
 
@@ -43,7 +44,9 @@ describe Notify do
     let(:example_site_path) { root_path }
     let(:new_user) { create(:user, email: 'newguy@example.com', created_by_id: 1) }
 
-    subject { Notify.new_user_email(new_user.id, new_user.password) }
+    token = 'kETLwRaayvigPq_x3SNM'
+
+    subject { Notify.new_user_email(new_user.id, new_user.password, token) }
 
     it_behaves_like 'an email sent from GitLab'
 
@@ -59,8 +62,15 @@ describe Notify do
       should have_body_text /#{new_user.email}/
     end
 
-    it 'contains the new user\'s password' do
-      should have_body_text /password/
+    it 'contains the password text' do
+      should have_body_text /Click here to set your password/
+    end
+
+    it 'includes a link for user to set password' do
+      params = "reset_password_token=#{token}"
+      should have_body_text(
+        %r{http://localhost(:\d+)?/users/password/edit\?#{params}}
+      )
     end
 
     it 'includes a link to the site' do
@@ -158,7 +168,7 @@ describe Notify do
         end
 
         it 'is sent to the assignee' do
-          should cc_to assignee.email
+          should deliver_to assignee.email
         end
       end
 
@@ -318,6 +328,35 @@ describe Notify do
           end
         end
 
+        describe 'status changed' do
+          let(:status) { 'reopened' }
+          subject { Notify.merge_request_status_email(recipient.id, merge_request.id, status, current_user) }
+
+          it_behaves_like 'an answer to an existing thread', 'merge_request'
+
+          it 'is sent as the author' do
+            sender = subject.header[:from].addrs[0]
+            sender.display_name.should eq(current_user.name)
+            sender.address.should eq(gitlab_sender)
+          end
+
+          it 'has the correct subject' do
+            should have_subject /#{merge_request.title} \(##{merge_request.iid}\)/i
+          end
+
+          it 'contains the new status' do
+            should have_body_text /#{status}/i
+          end
+
+          it 'contains the user name' do
+            should have_body_text /#{current_user.name}/i
+          end
+
+          it 'contains a link to the merge request' do
+            should have_body_text /#{project_merge_request_path project, merge_request}/
+          end
+        end
+
         describe 'that are merged' do
           subject { Notify.merged_merge_request_email(recipient.id, merge_request.id, merge_author.id) }
 
@@ -368,10 +407,10 @@ describe Notify do
     describe 'project access changed' do
       let(:project) { create(:project) }
       let(:user) { create(:user) }
-      let(:users_project) { create(:users_project,
+      let(:project_member) { create(:project_member,
                                    project: project,
                                    user: user) }
-      subject { Notify.project_access_granted_email(users_project.id) }
+      subject { Notify.project_access_granted_email(project_member.id) }
 
       it_behaves_like 'an email sent from GitLab'
 
@@ -382,7 +421,7 @@ describe Notify do
         should have_body_text /#{project.name}/
       end
       it 'contains new user role' do
-        should have_body_text /#{users_project.human_access}/
+        should have_body_text /#{project_member.human_access}/
       end
     end
 
@@ -402,7 +441,7 @@ describe Notify do
         end
 
         it 'is sent to the given recipient' do
-          should cc_to recipient.email
+          should deliver_to recipient.email
         end
 
         it 'contains the message from the note' do
@@ -472,7 +511,7 @@ describe Notify do
   describe 'group access changed' do
     let(:group) { create(:group) }
     let(:user) { create(:user) }
-    let(:membership) { create(:users_group, group: group, user: user) }
+    let(:membership) { create(:group_member, group: group, user: user) }
 
     subject { Notify.group_access_granted_email(membership.id) }
 
@@ -520,7 +559,7 @@ describe Notify do
   describe 'email on push with multiple commits' do
     let(:example_site_path) { root_path }
     let(:user) { create(:user) }
-    let(:compare) { Gitlab::Git::Compare.new(project.repository.raw_repository, 'cd5c4bac', 'b1e6a9db') }
+    let(:compare) { Gitlab::Git::Compare.new(project.repository.raw_repository, sample_image_commit.id, sample_commit.id) }
     let(:commits) { Commit.decorate(compare.commits) }
     let(:diff_path) { project_compare_path(project, from: commits.first, to: commits.last) }
 
@@ -533,7 +572,7 @@ describe Notify do
     end
 
     it 'is sent to recipient' do
-      should cc_to 'devs@company.name'
+      should deliver_to 'devs@company.name'
     end
 
     it 'has the correct subject' do
@@ -541,11 +580,11 @@ describe Notify do
     end
 
     it 'includes commits list' do
-      should have_body_text /tree css fixes/
+      should have_body_text /Change some files/
     end
 
     it 'includes diffs' do
-      should have_body_text /Checkout wiki pages for installation information/
+      should have_body_text /def archive_formats_regex/
     end
 
     it 'contains a link to the diff' do
@@ -556,7 +595,7 @@ describe Notify do
   describe 'email on push with a single commit' do
     let(:example_site_path) { root_path }
     let(:user) { create(:user) }
-    let(:compare) { Gitlab::Git::Compare.new(project.repository.raw_repository, '8716fc78', 'b1e6a9db') }
+    let(:compare) { Gitlab::Git::Compare.new(project.repository.raw_repository, sample_commit.parent_id, sample_commit.id) }
     let(:commits) { Commit.decorate(compare.commits) }
     let(:diff_path) { project_commit_path(project, commits.first) }
 
@@ -569,7 +608,7 @@ describe Notify do
     end
 
     it 'is sent to recipient' do
-      should cc_to 'devs@company.name'
+      should deliver_to 'devs@company.name'
     end
 
     it 'has the correct subject' do
@@ -577,11 +616,11 @@ describe Notify do
     end
 
     it 'includes commits list' do
-      should have_body_text /tree css fixes/
+      should have_body_text /Change some files/
     end
 
     it 'includes diffs' do
-      should have_body_text /Checkout wiki pages for installation information/
+      should have_body_text /def archive_formats_regex/
     end
 
     it 'contains a link to the diff' do

@@ -1,22 +1,16 @@
-- if can? current_user, :write_merge_request, @project
-  = link_to new_project_merge_request_path(@project), class: "pull-right btn btn-new", title: "New Merge Request" do
-    %i.icon-plus
-    New Merge Request
-%h3.page-title
-  Merge Requests
-  %span (#{@merge_requests.total_count})
-%hr
+= render "projects/issues_nav"
+
 .row
   .fixed.sidebar-expand-button.hidden-lg.hidden-md
-    %i.icon-list.icon-2x
+    %i.fa.fa-list.fa-2x
   .col-md-3.responsive-side
     = render 'shared/project_filter', project_entities_path: project_merge_requests_path(@project),
-             labels: true, redirect: 'merge_requests'
+             labels: true, redirect: 'merge_requests', entity: 'merge_request'
   .col-md-9
     .mr-filters.append-bottom-10
       .dropdown.inline
         %a.dropdown-toggle.btn{href: '#', "data-toggle" => "dropdown"}
-          %i.icon-user
+          %i.fa.fa-user
           %span.light assignee:
           - if @assignee.present?
             %strong= @assignee.name
@@ -39,7 +33,7 @@
 
       .dropdown.inline.prepend-left-10
         %a.dropdown-toggle.btn{href: '#', "data-toggle" => "dropdown"}
-          %i.icon-time
+          %i.fa.fa-clock-o
           %span.light milestone:
           - if @milestone.present?
             %strong= @milestone.title

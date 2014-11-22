@@ -2,9 +2,6 @@ require 'spec_helper'
 
 describe API::API, api: true  do
   include ApiHelpers
-  before(:each) { ActiveRecord::Base.observers.enable(:user_observer) }
-  after(:each) { ActiveRecord::Base.observers.disable(:user_observer) }
-
   let(:admin) { create(:admin) }
   let!(:group1) { create(:group) }
   let!(:group2) { create(:group) }
@@ -23,8 +20,7 @@ describe API::API, api: true  do
         response.status.should == 200
         json_response.should be_an Array
 
-        # Admin namespace + 2 group namespaces
-        json_response.length.should == 3
+        json_response.length.should == Namespace.count
       end
     end
   end

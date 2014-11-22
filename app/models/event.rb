@@ -15,9 +15,6 @@
 #
 
 class Event < ActiveRecord::Base
-  attr_accessible :project, :action, :data, :author_id, :project_id,
-                  :target_id, :target_type
-
   default_scope { where.not(author_id: nil) }
 
   CREATED   = 1
@@ -33,6 +30,7 @@ class Event < ActiveRecord::Base
   delegate :name, :email, to: :author, prefix: true, allow_nil: true
   delegate :title, to: :issue, prefix: true, allow_nil: true
   delegate :title, to: :merge_request, prefix: true, allow_nil: true
+  delegate :title, to: :note, prefix: true, allow_nil: true
 
   belongs_to :author, class_name: "User"
   belongs_to :project
@@ -40,6 +38,9 @@ class Event < ActiveRecord::Base
 
   # For Hash only
   serialize :data
+
+  # Callbacks
+  after_create :reset_project_activity
 
   # Scopes
   scope :recent, -> { order("created_at DESC") }
@@ -68,6 +69,12 @@ class Event < ActiveRecord::Base
         },
         author_id: user.id
       )
+    end
+
+    def reset_event_cache_for(target)
+      Event.where(target_id: target.id, target_type: target.class.to_s).
+        order('id DESC').limit(100).
+        update_all(updated_at: Time.now)
     end
   end
 
@@ -147,6 +154,10 @@ class Event < ActiveRecord::Base
     target if target_type == "MergeRequest"
   end
 
+  def note
+    target if target_type == "Note"
+  end
+
   def action_name
     if closed?
       "closed"
@@ -173,10 +184,6 @@ class Event < ActiveRecord::Base
 
   def branch?
     data[:ref]["refs/heads"]
-  end
-
-  def new_branch?
-    commit_from =~ /^00000/
   end
 
   def new_ref?
@@ -255,7 +262,7 @@ class Event < ActiveRecord::Base
   end
 
   def note_short_commit_id
-    note_commit_id[0..8]
+    Commit.truncate_sha(note_commit_id)
   end
 
   def note_commit?
@@ -301,6 +308,12 @@ class Event < ActiveRecord::Base
       true
     else
       target.respond_to? :title
+    end
+  end
+
+  def reset_project_activity
+    if project
+      project.update_column(:last_activity_at, self.created_at)
     end
   end
 end

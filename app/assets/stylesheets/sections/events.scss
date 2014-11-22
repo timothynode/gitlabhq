@@ -156,12 +156,13 @@
   .filter_icon {
     a {
       text-align:center;
-      background: #EEE;
+      background: $bg_primary;
       margin-bottom: 10px;
       float: left;
       padding: 9px 6px;
       font-size: 18px;
       width: 40px;
+      color: #FFF;
       @include border-radius(3px);
     }
 
@@ -185,7 +186,24 @@
 }
 
 @media (max-width: $screen-xs-max) {
-  .event-item .event-title {
-    @include str-truncated(65%);
+  .event-item {
+    .event-title {
+      white-space: normal;
+      overflow: visible;
+      max-width: 100%;
+    }
+    .avatar {
+      display: none;
+    }
+
+    .event-body {
+      margin: 0;
+      border-left: 2px solid #DDD;
+      padding-left: 10px;
+    }
+
+    .event-item-timestamp {
+      display: none;
+    }
   }
 }

@@ -27,6 +27,7 @@ module API
     helpers APIHelpers
 
     mount Groups
+    mount GroupMembers
     mount Users
     mount Projects
     mount Repositories
@@ -46,5 +47,6 @@ module API
     mount Commits
     mount Namespaces
     mount Branches
+    mount Labels
   end
 end

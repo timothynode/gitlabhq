@@ -1,9 +1,10 @@
-class ProjectMergeRequests < Spinach::FeatureSteps
+class Spinach::Features::ProjectMergeRequests < Spinach::FeatureSteps
   include SharedAuthentication
   include SharedProject
   include SharedNote
   include SharedPaths
   include SharedMarkdown
+  include SharedDiffNote
 
   step 'I click link "New Merge Request"' do
     click_link "New Merge Request"
@@ -61,8 +62,8 @@ class ProjectMergeRequests < Spinach::FeatureSteps
   end
 
   step 'I submit new merge request "Wiki Feature"' do
-    select "master", from: "merge_request_source_branch"
-    select "notes_refactoring", from: "merge_request_target_branch"
+    select "fix", from: "merge_request_source_branch"
+    select "feature", from: "merge_request_target_branch"
     click_button "Compare branches"
     fill_in "merge_request_title", with: "Wiki Feature"
     click_button "Submit merge request"
@@ -73,7 +74,7 @@ class ProjectMergeRequests < Spinach::FeatureSteps
            title: "Bug NS-04",
            source_project: project,
            target_project: project,
-           source_branch: 'stable',
+           source_branch: 'fix',
            target_branch: 'master',
            author: project.users.first,
            description: "# Description header"
@@ -96,6 +97,10 @@ class ProjectMergeRequests < Spinach::FeatureSteps
            author: project.users.first)
   end
 
+  step 'project "Shop" has "MR-task-open" open MR with task markdown' do
+    create_taskable(:merge_request, 'MR-task-open')
+  end
+
   step 'I switch to the diff tab' do
     visit diffs_project_merge_request_path(project, merge_request)
   end
@@ -104,9 +109,9 @@ class ProjectMergeRequests < Spinach::FeatureSteps
     visit project_merge_request_path(project, merge_request)
   end
 
-  step 'I click on the first commit in the merge request' do
-    within '.first-commits' do
-      click_link merge_request.commits.first.short_id(8)
+  step 'I click on the commit in the merge request' do
+    within '.mr-commits' do
+      click_link Commit.truncate_sha(sample_commit.id)
     end
   end
 
@@ -116,36 +121,35 @@ class ProjectMergeRequests < Spinach::FeatureSteps
   end
 
   step 'I leave a comment on the diff page in commit' do
-    find('a[data-line-code="4735dfc552ad7bf15ca468adc3cad9d05b624490_185_185"]').click
+    click_diff_line(sample_commit.line_code)
     leave_comment "One comment to rule them all"
   end
 
-  step 'I leave a comment like "Line is wrong" on line 185 of the first file' do
+  step 'I leave a comment like "Line is wrong" on diff' do
     init_diff_note
     leave_comment "Line is wrong"
   end
 
-  step 'I leave a comment like "Line is wrong" on line 185 of the first file in commit' do
-    find('a[data-line-code="4735dfc552ad7bf15ca468adc3cad9d05b624490_185_185"]').click
+  step 'I leave a comment like "Line is wrong" on diff in commit' do
+    click_diff_line(sample_commit.line_code)
     leave_comment "Line is wrong"
   end
 
-  step 'I should see a discussion has started on line 185' do
-    page.should have_content "#{current_user.name} started a discussion on this merge request diff"
-    page.should have_content "app/assets/stylesheets/tree.scss:L185"
+  step 'I should see a discussion has started on diff' do
+    page.should have_content "#{current_user.name} started a discussion"
+    page.should have_content sample_commit.line_code_path
     page.should have_content "Line is wrong"
   end
 
-  step 'I should see a discussion has started on commit b1e6a9dbf1:L185' do
+  step 'I should see a discussion has started on commit diff' do
     page.should have_content "#{current_user.name} started a discussion on commit"
-    page.should have_content "app/assets/stylesheets/tree.scss:L185"
+    page.should have_content sample_commit.line_code_path
     page.should have_content "Line is wrong"
   end
 
-  step 'I should see a discussion has started on commit b1e6a9dbf1' do
+  step 'I should see a discussion has started on commit' do
     page.should have_content "#{current_user.name} started a discussion on commit"
     page.should have_content "One comment to rule them all"
-    page.should have_content "app/assets/stylesheets/tree.scss:L185"
   end
 
   step 'merge request is mergeable' do
@@ -154,7 +158,7 @@ class ProjectMergeRequests < Spinach::FeatureSteps
 
   step 'I modify merge commit message' do
     find('.modify-merge-commit-link').click
-    fill_in 'merge_commit_message', with: "wow such merge"
+    fill_in 'commit_message', with: 'wow such merge'
   end
 
   step 'merge request "Bug NS-05" is mergeable' do
@@ -162,6 +166,10 @@ class ProjectMergeRequests < Spinach::FeatureSteps
   end
 
   step 'I accept this merge request' do
+    Gitlab::Satellite::MergeAction.any_instance.stub(
+      merge!: true,
+    )
+
     click_button "Accept Merge Request"
   end
 
@@ -207,6 +215,18 @@ class ProjectMergeRequests < Spinach::FeatureSteps
     end
   end
 
+  step 'I should not see a comment like "Line is wrong here" in the second file' do
+    within '.files [id^=diff]:nth-child(2)' do
+      page.should_not have_visible_content "Line is wrong here"
+    end
+  end
+
+  step 'I should see a comment like "Line is wrong here" in the second file' do
+    within '.files [id^=diff]:nth-child(2) .note-text' do
+      page.should have_visible_content "Line is wrong here"
+    end
+  end
+
   step 'I leave a comment like "Line is correct" on line 12 of the first file' do
     init_diff_note_first_file
 
@@ -224,12 +244,8 @@ class ProjectMergeRequests < Spinach::FeatureSteps
     init_diff_note_second_file
 
     within(".js-discussion-note-form") do
-      fill_in "note_note", with: "Line is wrong"
+      fill_in "note_note", with: "Line is wrong on here"
       click_button "Add Comment"
-    end
-
-    within ".files [id^=diff]:nth-child(2) .note-text" do
-      page.should have_content "Line is wrong"
     end
   end
 
@@ -239,8 +255,22 @@ class ProjectMergeRequests < Spinach::FeatureSteps
     end
   end
 
-  def project
-    @project ||= Project.find_by!(name: "Shop")
+  step 'I unfold diff' do
+    first('.js-unfold').click
+  end
+
+  step 'I should see additional file lines' do
+    expect(first('.text-file')).to have_content('.bundle')
+  end
+
+  step 'I click Side-by-side Diff tab' do
+    click_link 'Side-by-side Diff'
+  end
+
+  step 'I should see comments on the side-by-side diff page' do
+    within '.files [id^=diff]:nth-child(1) .note-text' do
+      page.should have_visible_content "Line is correct"
+    end
   end
 
   def merge_request
@@ -248,7 +278,7 @@ class ProjectMergeRequests < Spinach::FeatureSteps
   end
 
   def init_diff_note
-    find('a[data-line-code="4735dfc552ad7bf15ca468adc3cad9d05b624490_172_185"]').click
+    click_diff_line(sample_commit.line_code)
   end
 
   def leave_comment(message)
@@ -257,17 +287,15 @@ class ProjectMergeRequests < Spinach::FeatureSteps
       click_button "Add Comment"
     end
 
-    within ".note-text" do
-      page.should have_content message
-    end
+    page.should have_content message
   end
 
   def init_diff_note_first_file
-    find('a[data-line-code="a5cc2925ca8258af241be7e5b0381edf30266302_12_12"]').click
+    click_diff_line(sample_compare.changes[0][:line_code])
   end
 
   def init_diff_note_second_file
-    find('a[data-line-code="8ec9a00bfd09b3190ac6b22251dbb1aa95a0579d_28_39"]').click
+    click_diff_line(sample_compare.changes[1][:line_code])
   end
 
   def have_visible_content (text)

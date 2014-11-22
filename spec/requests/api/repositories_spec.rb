@@ -3,14 +3,13 @@ require 'mime/types'
 
 describe API::API, api: true  do
   include ApiHelpers
-  before(:each) { enable_observers }
-  after(:each) {disable_observers}
+  include RepoHelpers
 
   let(:user) { create(:user) }
   let(:user2) { create(:user) }
   let!(:project) { create(:project, creator_id: user.id) }
-  let!(:master) { create(:users_project, user: user, project: project, project_access: UsersProject::MASTER) }
-  let!(:guest) { create(:users_project, user: user2, project: project, project_access: UsersProject::GUEST) }
+  let!(:master) { create(:project_member, user: user, project: project, access_level: ProjectMember::MASTER) }
+  let!(:guest) { create(:project_member, user: user2, project: project, access_level: ProjectMember::GUEST) }
 
   before { project.team << [user, :reporter] }
 
@@ -24,20 +23,68 @@ describe API::API, api: true  do
   end
 
   describe 'POST /projects/:id/repository/tags' do
-    it 'should create a new tag' do
-      post api("/projects/#{project.id}/repository/tags", user),
-           tag_name: 'v1.0.0',
-           ref: 'master'
+    context 'lightweight tags' do
+      it 'should create a new tag' do
+        post api("/projects/#{project.id}/repository/tags", user),
+             tag_name: 'v7.0.1',
+             ref: 'master'
 
-      response.status.should == 201
-      json_response['name'].should == 'v1.0.0'
+        response.status.should == 201
+        json_response['name'].should == 'v7.0.1'
+      end
     end
+
+    context 'annotated tag' do
+      it 'should create a new annotated tag' do
+        # Identity must be set in .gitconfig to create annotated tag.
+        repo_path = project.repository.path_to_repo
+        system(*%W(git --git-dir=#{repo_path} config user.name #{user.name}))
+        system(*%W(git --git-dir=#{repo_path} config user.email #{user.email}))
+
+        post api("/projects/#{project.id}/repository/tags", user),
+             tag_name: 'v7.1.0',
+             ref: 'master',
+             message: 'Release 7.1.0'
+
+        response.status.should == 201
+        json_response['name'].should == 'v7.1.0'
+        json_response['message'].should == 'Release 7.1.0'
+      end
+    end
+
     it 'should deny for user without push access' do
       post api("/projects/#{project.id}/repository/tags", user2),
-           tag_name: 'v1.0.0',
+           tag_name: 'v1.9.0',
            ref: '621491c677087aa243f165eab467bfdfbee00be1'
-
       response.status.should == 403
+    end
+
+    it 'should return 400 if tag name is invalid' do
+      post api("/projects/#{project.id}/repository/tags", user),
+           tag_name: 'v 1.0.0',
+           ref: 'master'
+      response.status.should == 400
+      json_response['message'].should == 'Tag name invalid'
+    end
+
+    it 'should return 400 if tag already exists' do
+      post api("/projects/#{project.id}/repository/tags", user),
+           tag_name: 'v8.0.0',
+           ref: 'master'
+      response.status.should == 201
+      post api("/projects/#{project.id}/repository/tags", user),
+           tag_name: 'v8.0.0',
+           ref: 'master'
+      response.status.should == 400
+      json_response['message'].should == 'Tag already exists'
+    end
+
+    it 'should return 400 if ref name is invalid' do
+      post api("/projects/#{project.id}/repository/tags", user),
+           tag_name: 'mytag',
+           ref: 'foo'
+      response.status.should == 400
+      json_response['message'].should == 'Invalid reference name'
     end
   end
 
@@ -50,7 +97,7 @@ describe API::API, api: true  do
         response.status.should == 200
 
         json_response.should be_an Array
-        json_response.first['name'].should == 'app'
+        json_response.first['name'].should == 'encoding'
         json_response.first['type'].should == 'tree'
         json_response.first['mode'].should == '040000'
       end
@@ -95,7 +142,7 @@ describe API::API, api: true  do
 
   describe "GET /projects/:id/repository/raw_blobs/:sha" do
     it "should get the raw file contents" do
-      get api("/projects/#{project.id}/repository/raw_blobs/d1aff2896d99d7acc4d9780fbb716b113c45ecf7", user)
+      get api("/projects/#{project.id}/repository/raw_blobs/#{sample_blob.oid}", user)
       response.status.should == 200
     end
   end
@@ -131,23 +178,23 @@ describe API::API, api: true  do
     end
   end
 
-  describe 'GET /GET /projects/:id/repository/compare' do
+  describe 'GET /projects/:id/repository/compare' do
     it "should compare branches" do
-      get api("/projects/#{project.id}/repository/compare", user), from: 'master', to: 'simple_merge_request'
+      get api("/projects/#{project.id}/repository/compare", user), from: 'master', to: 'feature'
       response.status.should == 200
       json_response['commits'].should be_present
       json_response['diffs'].should be_present
     end
 
     it "should compare tags" do
-      get api("/projects/#{project.id}/repository/compare", user), from: 'v1.0.1', to: 'v1.0.2'
+      get api("/projects/#{project.id}/repository/compare", user), from: 'v1.0.0', to: 'v1.1.0'
       response.status.should == 200
       json_response['commits'].should be_present
       json_response['diffs'].should be_present
     end
 
     it "should compare commits" do
-      get api("/projects/#{project.id}/repository/compare", user), from: 'b1e6a9dbf1c85', to: '1e689bfba395'
+      get api("/projects/#{project.id}/repository/compare", user), from: sample_commit.id, to: sample_commit.parent_id
       response.status.should == 200
       json_response['commits'].should be_empty
       json_response['diffs'].should be_empty
@@ -155,7 +202,7 @@ describe API::API, api: true  do
     end
 
     it "should compare commits in reverse order" do
-      get api("/projects/#{project.id}/repository/compare", user), from: '1e689bfba395', to: 'b1e6a9dbf1c85'
+      get api("/projects/#{project.id}/repository/compare", user), from: sample_commit.parent_id, to: sample_commit.id
       response.status.should == 200
       json_response['commits'].should be_present
       json_response['diffs'].should be_present
@@ -167,6 +214,20 @@ describe API::API, api: true  do
       json_response['commits'].should be_empty
       json_response['diffs'].should be_empty
       json_response['compare_same_ref'].should be_true
+    end
+  end
+
+  describe 'GET /projects/:id/repository/contributors' do
+    it 'should return valid data' do
+      get api("/projects/#{project.id}/repository/contributors", user)
+      response.status.should == 200
+      json_response.should be_an Array
+      contributor = json_response.first
+      contributor['email'].should == 'dmitriy.zaporozhets@gmail.com'
+      contributor['name'].should == 'Dmitriy Zaporozhets'
+      contributor['commits'].should == 13
+      contributor['additions'].should == 0
+      contributor['deletions'].should == 0
     end
   end
 end

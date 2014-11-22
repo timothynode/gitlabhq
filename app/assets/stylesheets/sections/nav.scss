@@ -3,13 +3,11 @@
   margin: 20px 0;
   margin-top: 0;
   padding-top: 4px;
-  border-bottom: 1px solid #E1E1E1;
+  border-bottom: 1px solid #E9E9E9;
 
   ul {
     padding: 0;
     margin: auto;
-    height: 40px;
-    overflow: hidden;
     .count {
       font-weight: normal;
       display: inline-block;
@@ -35,71 +33,36 @@
       width: 1%;
       &.active {
         a {
-          color: #333;
+          color: $link_color;
           font-weight: bold;
-          &:after {
-            content: '';
-            display: block;
-            position: relative;
-            bottom: 8px;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-color: transparent transparent #333 transparent;
-            border-style: solid;
-            border-width: 6px;
-            margin-left: -6px;
-          }
+          border-bottom: 3px solid $link_color;
         }
       }
 
       &:hover {
         a {
-          color: $link_color;
-          &:after {
-            content: '';
-            display: block;
-            position: relative;
-            bottom: 8px;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-color: transparent transparent $link_color transparent;
-            border-style: solid;
-            border-width: 6px;
-            margin-left: -6px;
-          }
-        }
-      }
-
-      &.home {
-        a {
-          i {
-            font-size: 20px;
-            position: relative;
-            top: 4px;
-          }
+          color: $link_hover_color;
+          border-bottom: 3px solid $link_hover_color;
         }
       }
     }
     a {
       display: block;
       text-align: center;
-      font-weight: 500;
-      height: 38px;
-      line-height: 34px;
+      font-weight: bold;
+      height: 42px;
+      line-height: 39px;
       color: #777;
       text-shadow: 0 1px 1px white;
-      padding: 0 10px;
       text-decoration: none;
-      padding-top: 2px;
+      overflow: hidden;
+      margin-bottom: -1px;
     }
   }
 
   @media (max-width: $screen-xs-max) {
     font-size: 18px;
     margin: 0;
-
     max-height: none;
 
     &, .container {
@@ -122,6 +85,7 @@
             color: #fff;
             font-weight: normal;
             text-shadow: none;
+            border: none;
 
             &:after { display: none; }
           }

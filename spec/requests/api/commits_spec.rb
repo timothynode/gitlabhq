@@ -3,14 +3,12 @@ require 'mime/types'
 
 describe API::API, api: true  do
   include ApiHelpers
-  before(:each) { enable_observers }
-  after(:each) {disable_observers}
-
   let(:user) { create(:user) }
   let(:user2) { create(:user) }
   let!(:project) { create(:project, creator_id: user.id) }
-  let!(:master) { create(:users_project, user: user, project: project, project_access: UsersProject::MASTER) }
-  let!(:guest) { create(:users_project, user: user2, project: project, project_access: UsersProject::GUEST) }
+  let!(:master) { create(:project_member, user: user, project: project, access_level: ProjectMember::MASTER) }
+  let!(:guest) { create(:project_member, user: user2, project: project, access_level: ProjectMember::GUEST) }
+  let!(:note) { create(:note_on_commit, author: user, project: project, commit_id: project.repository.commit.id, note: 'a comment on a commit') }
 
   before { project.team << [user, :reporter] }
 
@@ -80,6 +78,70 @@ describe API::API, api: true  do
     context "unauthorized user" do
       it "should not return the diff of the selected commit" do
         get api("/projects/#{project.id}/repository/commits/#{project.repository.commit.id}/diff")
+        response.status.should == 401
+      end
+    end
+  end
+
+  describe 'GET /projects:id/repository/commits/:sha/comments' do
+    context 'authorized user' do
+      it 'should return merge_request comments' do
+        get api("/projects/#{project.id}/repository/commits/#{project.repository.commit.id}/comments", user)
+        response.status.should == 200
+        json_response.should be_an Array
+        json_response.length.should == 1
+        json_response.first['note'].should == 'a comment on a commit'
+        json_response.first['author']['id'].should == user.id
+      end
+
+      it 'should return a 404 error if merge_request_id not found' do
+        get api("/projects/#{project.id}/repository/commits/1234ab/comments", user)
+        response.status.should == 404
+      end
+    end
+
+    context 'unauthorized user' do
+      it 'should not return the diff of the selected commit' do
+        get api("/projects/#{project.id}/repository/commits/1234ab/comments")
+        response.status.should == 401
+      end
+    end
+  end
+
+  describe 'POST /projects:id/repository/commits/:sha/comments' do
+    context 'authorized user' do
+      it 'should return comment' do
+        post api("/projects/#{project.id}/repository/commits/#{project.repository.commit.id}/comments", user), note: 'My comment'
+        response.status.should == 201
+        json_response['note'].should == 'My comment'
+        json_response['path'].should be_nil
+        json_response['line'].should be_nil
+        json_response['line_type'].should be_nil
+      end
+
+      it 'should return the inline comment' do
+        post api("/projects/#{project.id}/repository/commits/#{project.repository.commit.id}/comments", user), note: 'My comment', path: project.repository.commit.diffs.first.new_path, line: 7, line_type: 'new'
+        response.status.should == 201
+        json_response['note'].should == 'My comment'
+        json_response['path'].should == project.repository.commit.diffs.first.new_path
+        json_response['line'].should == 7
+        json_response['line_type'].should == 'new'
+      end
+
+      it 'should return 400 if note is missing' do
+        post api("/projects/#{project.id}/repository/commits/#{project.repository.commit.id}/comments", user)
+        response.status.should == 400
+      end
+
+      it 'should return 404 if note is attached to non existent commit' do
+        post api("/projects/#{project.id}/repository/commits/1234ab/comments", user), note: 'My comment'
+        response.status.should == 404
+      end
+    end
+
+    context 'unauthorized user' do
+      it 'should not return the diff of the selected commit' do
+        post api("/projects/#{project.id}/repository/commits/#{project.repository.commit.id}/comments")
         response.status.should == 401
       end
     end

@@ -3,8 +3,7 @@ class Projects::RawController < Projects::ApplicationController
   include ExtractsPath
 
   # Authorize
-  before_filter :authorize_read_project!
-  before_filter :authorize_code_access!
+  before_filter :authorize_download_code!
   before_filter :require_non_empty_project
 
   def show
@@ -29,12 +28,10 @@ class Projects::RawController < Projects::ApplicationController
   private
 
   def get_blob_type
-    if @blob.mime_type =~ /html|javascript/
+    if @blob.text?
       'text/plain; charset=utf-8'
-    elsif @blob.name =~ /(?:msi|exe|rar|r0\d|7z|7zip|zip)$/
-      'application/octet-stream'
     else
-      @blob.mime_type
+      'application/octet-stream'
     end
   end
 end

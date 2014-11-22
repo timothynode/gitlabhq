@@ -11,7 +11,7 @@ module Gitlab
         @project = project
       end
 
-      def log message
+      def log(message)
         Gitlab::Satellite::Logger.error(message)
       end
 
@@ -53,7 +53,7 @@ module Gitlab
         File.open(lock_file, "w+") do |f|
           begin
             f.flock File::LOCK_EX
-            Dir.chdir(path) { return yield }
+            yield
           ensure
             f.flock File::LOCK_UN
           end
@@ -121,6 +121,7 @@ module Gitlab
       #
       # Note: this will only update remote branches (i.e. origin/*)
       def update_from_source!
+        repo.git.remote(default_options, 'set-url', :origin, project.repository.path_to_repo)
         repo.git.fetch(default_options, :origin)
       end
 

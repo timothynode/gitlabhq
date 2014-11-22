@@ -21,6 +21,7 @@ module Backup
         system('pg_dump', config['database'], out: db_file_name)
       end
       report_success(success)
+      abort 'Backup failed' unless success
     end
 
     def restore
@@ -33,10 +34,12 @@ module Backup
         # Drop all tables because PostgreSQL DB dumps do not contain DROP TABLE
         # statements like MySQL.
         Rake::Task["gitlab:db:drop_all_tables"].invoke
+        Rake::Task["gitlab:db:drop_all_postgres_sequences"].invoke
         pg_env
         system('psql', config['database'], '-f', db_file_name)
       end
       report_success(success)
+      abort 'Restore failed' unless success
     end
 
     protected

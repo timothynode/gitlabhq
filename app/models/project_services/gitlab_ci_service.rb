@@ -2,24 +2,18 @@
 #
 # Table name: services
 #
-#  id          :integer          not null, primary key
-#  type        :string(255)
-#  title       :string(255)
-#  token       :string(255)
-#  project_id  :integer          not null
-#  created_at  :datetime
-#  updated_at  :datetime
-#  active      :boolean          default(FALSE), not null
-#  project_url :string(255)
-#  subdomain   :string(255)
-#  room        :string(255)
-#  recipients  :text
-#  api_key     :string(255)
+#  id         :integer          not null, primary key
+#  type       :string(255)
+#  title      :string(255)
+#  project_id :integer          not null
+#  created_at :datetime
+#  updated_at :datetime
+#  active     :boolean          default(FALSE), not null
+#  properties :text
 #
 
 class GitlabCiService < CiService
-  attr_accessible :project_url
-
+  prop_accessor :project_url, :token
   validates :project_url, presence: true, if: :activated?
   validates :token, presence: true, if: :activated?
 
@@ -33,12 +27,17 @@ class GitlabCiService < CiService
     hook.save
   end
 
-  def commit_status_path sha
-    project_url + "/builds/#{sha}/status.json?token=#{token}"
+  def commit_status_path(sha)
+    project_url + "/commits/#{sha}/status.json?token=#{token}"
   end
 
-  def commit_status sha
-    response = HTTParty.get(commit_status_path(sha), verify: false)
+  def get_ci_build(sha)
+    @ci_builds ||= {}
+    @ci_builds[sha] ||= HTTParty.get(commit_status_path(sha), verify: false)
+  end
+
+  def commit_status(sha)
+    response = get_ci_build(sha)
 
     if response.code == 200 and response["status"]
       response["status"]
@@ -47,8 +46,16 @@ class GitlabCiService < CiService
     end
   end
 
-  def build_page sha
-    project_url + "/builds/#{sha}"
+  def commit_coverage(sha)
+    response = get_ci_build(sha)
+
+    if response.code == 200 and response["coverage"]
+      response["coverage"]
+    end
+  end
+
+  def build_page(sha)
+    project_url + "/commits/#{sha}"
   end
 
   def builds_path

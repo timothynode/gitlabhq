@@ -19,7 +19,7 @@ module EventsHelper
     [event.action_name, target].join(" ")
   end
 
-  def event_filter_link key, tooltip
+  def event_filter_link(key, tooltip)
     key = key.to_s
     inactive = if @event_filter.active? key
                  nil
@@ -36,24 +36,26 @@ module EventsHelper
 
   def icon_for_event
     {
-      EventFilter.push     => "icon-upload-alt",
-      EventFilter.merged   => "icon-check",
-      EventFilter.comments => "icon-comments",
-      EventFilter.team     => "icon-user",
+      EventFilter.push     => 'fa fa-upload',
+      EventFilter.merged   => 'fa fa-check-square-o',
+      EventFilter.comments => 'fa fa-comments',
+      EventFilter.team     => 'fa fa-user',
     }
   end
 
   def event_feed_title(event)
     if event.issue?
-      "#{event.author_name} #{event.action_name} issue ##{event.target_id}: #{event.issue_title} at #{event.project_name}"
+      "#{event.author_name} #{event.action_name} issue ##{event.target_iid}: #{event.issue_title} at #{event.project_name}"
     elsif event.merge_request?
-      "#{event.author_name} #{event.action_name} MR ##{event.target_id}: #{event.merge_request_title} at #{event.project_name}"
+      "#{event.author_name} #{event.action_name} MR ##{event.target_iid}: #{event.merge_request_title} at #{event.project_name}"
     elsif event.push?
       "#{event.author_name} #{event.push_action_name} #{event.ref_type} #{event.ref_name} at #{event.project_name}"
     elsif event.membership_changed?
       "#{event.author_name} #{event.action_name} #{event.project_name}"
+    elsif event.note? && event.note_commit?
+      "#{event.author_name} commented on #{event.note_target_type} #{event.note_short_commit_id} at #{event.project_name}"
     elsif event.note?
-      "#{event.author_name} commented on #{event.note_target_type} ##{truncate event.note_target_id} at #{event.project_name}"
+      "#{event.author_name} commented on #{event.note_target_type} ##{truncate event.note_target_iid} at #{event.project_name}"
     else
       ""
     end
@@ -64,7 +66,18 @@ module EventsHelper
       project_issue_url(event.project, event.issue)
     elsif event.merge_request?
       project_merge_request_url(event.project, event.merge_request)
-
+    elsif event.note? && event.note_commit?
+      project_commit_url(event.project, event.note_target)
+    elsif event.note?
+      if event.note_target
+        if event.note_commit?
+          project_commit_path(event.project, event.note_commit_id, anchor: dom_id(event.target))
+        elsif event.note_project_snippet?
+          project_snippet_path(event.project, event.note_target)
+        else
+          event_note_target_path(event)
+        end
+      end
     elsif event.push?
       if event.push_with_commits?
         if event.commits_count > 1
@@ -83,6 +96,12 @@ module EventsHelper
       render "events/event_issue", issue: event.issue
     elsif event.push?
       render "events/event_push", event: event
+    elsif event.merge_request?
+      render "events/event_merge_request", merge_request: event.merge_request
+    elsif event.push?
+      render "events/event_push", event: event
+    elsif event.note?
+      render "events/event_note", note: event.note
     end
   end
 
@@ -117,9 +136,8 @@ module EventsHelper
   end
 
   def event_note(text)
-    text = first_line(text)
-    text = truncate(text, length: 150)
-    sanitize(markdown(text), tags: %w(a img b pre p))
+    text = first_line_in_markdown(text, 150)
+    sanitize(text, tags: %w(a img b pre code p))
   end
 
   def event_commit_title(message)

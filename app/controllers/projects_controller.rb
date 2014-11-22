@@ -4,9 +4,7 @@ class ProjectsController < ApplicationController
   before_filter :repository, except: [:new, :create]
 
   # Authorize
-  before_filter :authorize_read_project!, except: [:index, :new, :create]
   before_filter :authorize_admin_project!, only: [:edit, :update, :destroy, :transfer, :archive, :unarchive, :retry_import]
-  before_filter :require_non_empty_project, only: [:blob, :tree, :graph]
 
   layout 'navless', only: [:new, :create, :fork]
   before_filter :set_title, only: [:new, :create]
@@ -20,7 +18,7 @@ class ProjectsController < ApplicationController
   end
 
   def create
-    @project = ::Projects::CreateService.new(current_user, params[:project]).execute
+    @project = ::Projects::CreateService.new(current_user, project_params).execute
     flash[:notice] = 'Project was successfully created.' if @project.saved?
 
     respond_to do |format|
@@ -29,7 +27,7 @@ class ProjectsController < ApplicationController
   end
 
   def update
-    status = ::Projects::UpdateService.new(@project, current_user, params).execute
+    status = ::Projects::UpdateService.new(@project, current_user, project_params).execute
 
     respond_to do |format|
       if status
@@ -44,7 +42,7 @@ class ProjectsController < ApplicationController
   end
 
   def transfer
-    ::Projects::TransferService.new(project, current_user, params[:project]).execute
+    ::Projects::TransferService.new(project, current_user, project_params).execute
   end
 
   def show
@@ -53,12 +51,12 @@ class ProjectsController < ApplicationController
       return
     end
 
-    return authenticate_user! unless @project.public? || current_user
-
     limit = (params[:limit] || 20).to_i
     @events = @project.events.recent
     @events = event_filter.apply_filter(@events)
     @events = @events.limit(limit).offset(params[:offset] || 0)
+
+    @show_star = !(current_user && current_user.starred?(@project))
 
     respond_to do |format|
       format.html do
@@ -74,7 +72,7 @@ class ProjectsController < ApplicationController
   end
 
   def import
-    if project.import_finished?
+    if @project.import_finished?
       redirect_to @project
       return
     end
@@ -85,7 +83,7 @@ class ProjectsController < ApplicationController
       redirect_to import_project_path(@project)
     end
 
-    @project.import_url = params[:project][:import_url]
+    @project.import_url = project_params[:import_url]
 
     if @project.save
       @project.reload
@@ -96,47 +94,32 @@ class ProjectsController < ApplicationController
   end
 
   def destroy
-    return access_denied! unless can?(current_user, :remove_project, project)
+    return access_denied! unless can?(current_user, :remove_project, @project)
 
-    project.team.truncate
-    project.destroy
-
-    respond_to do |format|
-      format.html { redirect_to root_path }
-    end
-  end
-
-  def fork
-    @forked_project = ::Projects::ForkService.new(project, current_user).execute
+    ::Projects::DestroyService.new(@project, current_user, {}).execute
 
     respond_to do |format|
       format.html do
-        if @forked_project.saved? && @forked_project.forked?
-          redirect_to(@forked_project, notice: 'Project was successfully forked.')
+        flash[:alert] = "Project deleted."
+
+        if request.referer.include?("/admin")
+          redirect_to admin_projects_path
         else
-          @title = 'Fork project'
-          render "fork"
+          redirect_to projects_dashboard_path
         end
       end
-      format.js
     end
   end
 
   def autocomplete_sources
     note_type = params['type']
     note_id = params['type_id']
-    participating = if note_type && note_id
-                      participants_in(note_type, note_id)
-                    else
-                      []
-                    end
-    team_members = sorted(@project.team.members)
-    participants = team_members + participating
+    participants = ::Projects::ParticipantsService.new(@project).execute(note_type, note_id)
     @suggestions = {
       emojis: Emoji.names.map { |e| { name: e, path: view_context.image_url("emoji/#{e}.png") } },
       issues: @project.issues.select([:iid, :title, :description]),
       mergerequests: @project.merge_requests.select([:iid, :title, :description]),
-      members: participants.uniq
+      members: participants
     }
 
     respond_to do |format|
@@ -145,8 +128,8 @@ class ProjectsController < ApplicationController
   end
 
   def archive
-    return access_denied! unless can?(current_user, :archive_project, project)
-    project.archive!
+    return access_denied! unless can?(current_user, :archive_project, @project)
+    @project.archive!
 
     respond_to do |format|
       format.html { redirect_to @project }
@@ -154,8 +137,8 @@ class ProjectsController < ApplicationController
   end
 
   def unarchive
-    return access_denied! unless can?(current_user, :archive_project, project)
-    project.unarchive!
+    return access_denied! unless can?(current_user, :archive_project, @project)
+    @project.unarchive!
 
     respond_to do |format|
       format.html { redirect_to @project }
@@ -172,6 +155,12 @@ class ProjectsController < ApplicationController
         format.json { render json: "Invalid file.", status: :unprocessable_entity }
       end
     end
+  end
+
+  def toggle_star
+    current_user.toggle_star(@project)
+    @project.reload
+    render json: { star_count: @project.star_count }
   end
 
   private
@@ -193,24 +182,11 @@ class ProjectsController < ApplicationController
     current_user ? "projects" : "public_projects"
   end
 
-  def participants_in(type, id)
-    users = case type
-            when "Issue"
-              issue = @project.issues.find_by_iid(id)
-              issue ? issue.participants : []
-            when "MergeRequest"
-              merge_request = @project.merge_requests.find_by_iid(id)
-              merge_request ? merge_request.participants : []
-            when "Commit"
-              author_ids = Note.for_commit_id(id).pluck(:author_id).uniq
-              User.where(id: author_ids)
-            else
-              []
-            end
-    sorted(users)
-  end
-
-  def sorted(users)
-    users.uniq.to_a.compact.sort_by(&:username).map { |user| { username: user.username, name: user.name } }
+  def project_params
+    params.require(:project).permit(
+      :name, :path, :description, :issues_tracker, :tag_list,
+      :issues_enabled, :merge_requests_enabled, :snippets_enabled, :issues_tracker_id, :default_branch,
+      :wiki_enabled, :visibility_level, :import_url, :last_activity_at, :namespace_id
+    )
   end
 end

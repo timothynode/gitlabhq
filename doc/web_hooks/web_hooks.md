@@ -63,6 +63,11 @@ Triggered when a new issue is created or an existing issue was updated/closed/re
 ```json
 {
   "object_kind": "issue",
+  "user": {
+    "name": "Administrator",
+    "username": "root",
+    "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=40\u0026d=identicon"
+  },
   "object_attributes": {
     "id": 301,
     "title": "New API: create/update/delete file",
@@ -76,7 +81,9 @@ Triggered when a new issue is created or an existing issue was updated/closed/re
     "description": "Create new API for manipulations with repository",
     "milestone_id": null,
     "state": "opened",
-    "iid": 23
+    "iid": 23,
+    "url": "http://example.com/diaspora/issues/23",
+    "action": "open"
   }
 }
 ```
@@ -90,6 +97,11 @@ Triggered when a new merge request is created or an existing merge request was u
 ```json
 {
   "object_kind": "merge_request",
+  "user": {
+    "name": "Administrator",
+    "username": "root",
+    "avatar_url": "http://www.gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?s=40\u0026d=identicon"
+  },
   "object_attributes": {
     "id": 99,
     "target_branch": "master",
@@ -107,7 +119,31 @@ Triggered when a new merge request is created or an existing merge request was u
     "merge_status": "unchecked",
     "target_project_id": 14,
     "iid": 1,
-    "description": ""
+    "description": "",
+    "source": {
+      "name": "awesome_project",
+      "ssh_url": "ssh://git@example.com/awesome_space/awesome_project.git",
+      "http_url": "http://example.com/awesome_space/awesome_project.git",
+      "visibility_level": 20,
+      "namespace": "awesome_space"
+    },
+    "target": {
+      "name": "awesome_project",
+      "ssh_url": "ssh://git@example.com/awesome_space/awesome_project.git",
+      "http_url": "http://example.com/awesome_space/awesome_project.git",
+      "visibility_level": 20,
+      "namespace": "awesome_space"
+    },
+    "last_commit": {
+      "id": "da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
+      "message": "fixed readme",
+      "timestamp": "2012-01-03T23:36:29+02:00",
+      "url": "http://example.com/awesome_space/awesome_project/commits/da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
+      "author": {
+        "name": "GitLab dev user",
+        "email": "gitlabdev@dv6700.(none)"
+      }
+    }
   }
 }
 ```
@@ -122,12 +158,14 @@ Save the following file as `print_http_body.rb`.
 ```ruby
 require 'webrick'
 
-server = WEBrick::HTTPServer.new(Port: ARGV.first)
+server = WEBrick::HTTPServer.new(:Port => ARGV.first)
 server.mount_proc '/' do |req, res|
   puts req.body
 end
 
-trap 'INT' do server.shutdown end
+trap 'INT' do 
+  server.shutdown 
+end
 server.start
 ```
 

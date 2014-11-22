@@ -13,7 +13,7 @@ class EmailsOnPushWorker
       return true
     end
 
-    compare = Gitlab::Git::Compare.new(project.repository.raw_repository, before_sha, after_sha, MergeRequestDiff::COMMITS_SAFE_SIZE)
+    compare = Gitlab::Git::Compare.new(project.repository.raw_repository, before_sha, after_sha)
 
     # Do not send emails if git compare failed
     return false unless compare && compare.commits.present?
@@ -21,5 +21,8 @@ class EmailsOnPushWorker
     recipients.split(" ").each do |recipient|
       Notify.repository_push_email(project_id, recipient, author_id, branch, compare).deliver
     end
+  ensure
+    compare = nil
+    GC.start
   end
 end

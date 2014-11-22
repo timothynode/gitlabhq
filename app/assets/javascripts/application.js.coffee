@@ -15,22 +15,32 @@
 #= require jquery.atwho
 #= require jquery.scrollTo
 #= require jquery.blockUI
-#= require turbolinks
 #= require jquery.turbolinks
+#= require turbolinks
 #= require bootstrap
+#= require password_strength
 #= require select2
 #= require raphael
 #= require g.raphael-min
 #= require g.bar-min
+#= require chart-lib.min
 #= require branch-graph
-#= require highlightjs.min
+#= require highlight.pack
 #= require ace/ace
+#= require ace/ext-searchbox
 #= require d3
 #= require underscore
 #= require nprogress
 #= require nprogress-turbolinks
 #= require dropzone
 #= require semantic-ui/sidebar
+#= require mousetrap
+#= require mousetrap/pause
+#= require shortcuts
+#= require shortcuts_navigation
+#= require shortcuts_dashboard_navigation
+#= require shortcuts_issueable
+#= require shortcuts_network
 #= require_tree .
 
 window.slugify = (text) ->
@@ -53,15 +63,40 @@ window.split = (val) ->
 window.extractLast = (term) ->
   return split( term ).pop()
 
+window.rstrip = (val) ->
+  return if val then val.replace(/\s+$/, '') else val
+
 # Disable button if text field is empty
 window.disableButtonIfEmptyField = (field_selector, button_selector) ->
   field = $(field_selector)
-  closest_submit = field.closest("form").find(button_selector)
+  closest_submit = field.closest('form').find(button_selector)
 
-  closest_submit.disable() if field.val() is ""
+  closest_submit.disable() if rstrip(field.val()) is ""
 
-  field.on "input", ->
-    if $(@).val() is ""
+  field.on 'input', ->
+    if rstrip($(@).val()) is ""
+      closest_submit.disable()
+    else
+      closest_submit.enable()
+
+# Disable button if any input field with given selector is empty
+window.disableButtonIfAnyEmptyField = (form, form_selector, button_selector) ->
+  closest_submit = form.find(button_selector)
+  empty = false
+  form.find('input').filter(form_selector).each ->
+    empty = true if rstrip($(this).val()) is ""
+
+  if empty
+    closest_submit.disable()
+  else
+    closest_submit.enable()
+
+  form.keyup ->
+    empty = false
+    form.find('input').filter(form_selector).each ->
+      empty = true if rstrip($(this).val()) is ""
+
+    if empty
       closest_submit.disable()
     else
       closest_submit.enable()
@@ -92,6 +127,13 @@ $ ->
   # Initialize select2 selects
   $('select.select2').select2(width: 'resolve', dropdownAutoWidth: true)
 
+  # Close select2 on escape
+  $('.js-select2').bind 'select2-close', ->
+    setTimeout ( ->
+      $('.select2-container-active').removeClass('select2-container-active')
+      $(':focus').blur()
+    ), 1
+
   # Initialize tooltips
   $('.has_tooltip').tooltip()
 
@@ -109,7 +151,6 @@ $ ->
   if (flash = $(".flash-container")).length > 0
     flash.click -> $(@).fadeOut()
     flash.show()
-    setTimeout (-> flash.fadeOut()), 5000
 
   # Disable form buttons while a form is submitting
   $('body').on 'ajax:complete, ajax:beforeSend, submit', 'form', (e) ->
@@ -124,24 +165,25 @@ $ ->
   # Show/Hide the profile menu when hovering the account box
   $('.account-box').hover -> $(@).toggleClass('hover')
 
-  # Focus search field by pressing 's' key
-  $(document).keypress (e) ->
-    # Don't do anything if typing in an input
-    return if $(e.target).is(":input")
-
-    switch e.which
-      when 115
-        $("#search").focus()
-        e.preventDefault()
-      when 63
-        new Shortcuts()
-        e.preventDefault()
-
-
   # Commit show suppressed diff
   $(".diff-content").on "click", ".supp_diff_link", ->
     $(@).next('table').show()
     $(@).remove()
+
+  # Show/hide comments on diff
+  $("body").on "click", ".js-toggle-diff-comments", (e) ->
+    $(@).find('i').
+      toggleClass('fa fa-chevron-down').
+      toggleClass('fa fa-chevron-up')
+    $(@).closest(".diff-file").find(".notes_holder").toggle()
+    e.preventDefault()
+
+  $(document).on "click", '.js-confirm-danger', (e) ->
+    e.preventDefault()
+    btn = $(e.target)
+    text = btn.data("confirm-danger-message")
+    form = btn.closest("form")
+    new ConfirmDangerModal(form, text)
 
 (($) ->
   # Disable an element and add the 'disabled' Bootstrap class

@@ -1,5 +1,5 @@
 module IssuesHelper
-  def issue_css_classes issue
+  def issue_css_classes(issue)
     classes = "issue"
     classes << " closed" if issue.closed?
     classes << " today" if issue.today?
@@ -62,6 +62,19 @@ module IssuesHelper
     ''
   end
 
+  def issue_timestamp(issue)
+    # Shows the created at time and the updated at time if different
+    ts = "#{time_ago_with_tooltip(issue.created_at, 'bottom', 'note_created_ago')}"
+    if issue.updated_at != issue.created_at
+      ts << capture_haml do
+        haml_tag :small do
+          haml_concat " (Edited #{time_ago_with_tooltip(issue.updated_at, 'bottom', 'issue_edited_ago')})"
+        end
+      end
+    end
+    ts.html_safe
+  end
+
   # Checks if issues_tracker setting exists in gitlab.yml
   def external_issues_tracker_enabled?
     Gitlab.config.issues_tracker && Gitlab.config.issues_tracker.values.any?
@@ -84,7 +97,7 @@ module IssuesHelper
                                        'id', 'name', object.assignee_id)
   end
 
-  def milestone_options object
+  def milestone_options(object)
     options_from_collection_for_select(object.project.milestones.active,
                                        'id', 'title', object.milestone_id)
   end

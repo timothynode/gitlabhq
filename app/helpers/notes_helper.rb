@@ -15,12 +15,6 @@ module NotesHelper
     end
   end
 
-  def link_to_merge_request_diff_line_note(note)
-    if note.for_merge_request_diff_line? and note.diff
-      link_to "#{note.diff_file_name}:L#{note.diff_new_line}", diffs_project_merge_request_path(note.project, note.noteable, anchor: note.line_code)
-    end
-  end
-
   def note_timestamp(note)
     # Shows the created at time and the updated at time if different
     ts = "#{time_ago_with_tooltip(note.created_at, 'bottom', 'note_created_ago')}"
@@ -58,7 +52,25 @@ module NotesHelper
       discussion_id: discussion_id
     }
 
-    link_to "", "javascript:;", class: "add-diff-note js-add-diff-note-button",
-      data: data, title: "Add a comment to this line"
+    button_tag '', class: 'btn add-diff-note js-add-diff-note-button',
+               data: data, title: 'Add a comment to this line'
+  end
+
+  def link_to_reply_diff(note)
+    return unless current_user
+
+    data = {
+      noteable_type: note.noteable_type,
+      noteable_id:   note.noteable_id,
+      commit_id:     note.commit_id,
+      line_code:     note.line_code,
+      discussion_id: note.discussion_id
+    }
+
+    button_tag class: 'btn reply-btn js-discussion-reply-button',
+               data: data, title: 'Add a reply' do
+      link_text = content_tag(:i, nil, class: 'fa fa-comment')
+      link_text << ' Reply'
+    end
   end
 end

@@ -1,4 +1,4 @@
-class ProjectServices < Spinach::FeatureSteps
+class Spinach::Features::ProjectServices < Spinach::FeatureSteps
   include SharedAuthentication
   include SharedProject
   include SharedPaths
@@ -13,6 +13,8 @@ class ProjectServices < Spinach::FeatureSteps
     page.should have_content 'Hipchat'
     page.should have_content 'GitLab CI'
     page.should have_content 'Assembla'
+    page.should have_content 'Pushover'
+    page.should have_content 'Atlassian Bamboo'
   end
 
   step 'I click gitlab-ci service link' do
@@ -107,15 +109,52 @@ class ProjectServices < Spinach::FeatureSteps
 
   step 'I fill Slack settings' do
     check 'Active'
-    fill_in 'Subdomain', with: 'gitlab'
-    fill_in 'Room', with: '#gitlab'
-    fill_in 'Token', with: 'verySecret'
+    fill_in 'Webhook', with: 'https://hooks.slack.com/services/SVRWFV0VVAR97N/B02R25XN3/ZBqu7xMupaEEICInN685'
     click_button 'Save'
   end
 
   step 'I should see Slack service settings saved' do
-    find_field('Subdomain').value.should == 'gitlab'
-    find_field('Room').value.should == '#gitlab'
-    find_field('Token').value.should == 'verySecret'
+    find_field('Webhook').value.should == 'https://hooks.slack.com/services/SVRWFV0VVAR97N/B02R25XN3/ZBqu7xMupaEEICInN685'
+  end
+
+  step 'I click Pushover service link' do
+    click_link 'Pushover'
+  end
+
+  step 'I fill Pushover settings' do
+    check 'Active'
+    fill_in 'Api key', with: 'verySecret'
+    fill_in 'User key', with: 'verySecret'
+    fill_in 'Device', with: 'myDevice'
+    select 'High Priority', from: 'Priority'
+    select 'Bike', from: 'Sound'
+    click_button 'Save'
+  end
+
+  step 'I should see Pushover service settings saved' do
+    find_field('Api key').value.should == 'verySecret'
+    find_field('User key').value.should == 'verySecret'
+    find_field('Device').value.should == 'myDevice'
+    find_field('Priority').find('option[selected]').value.should == '1'
+    find_field('Sound').find('option[selected]').value.should == 'bike'
+  end
+
+  step 'I click Atlassian Bamboo CI service link' do
+    click_link 'Atlassian Bamboo CI'
+  end
+
+  step 'I fill Atlassian Bamboo CI settings' do
+    check 'Active'
+    fill_in 'Bamboo url', with: 'http://bamboo.example.com'
+    fill_in 'Build key', with: 'KEY'
+    fill_in 'Username', with: 'user'
+    fill_in 'Password', with: 'verySecret'
+    click_button 'Save'
+  end
+
+  step 'I should see Atlassian Bamboo CI service settings saved' do
+    find_field('Bamboo url').value.should == 'http://bamboo.example.com'
+    find_field('Build key').value.should == 'KEY'
+    find_field('Username').value.should == 'user'
   end
 end

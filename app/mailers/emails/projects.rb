@@ -1,10 +1,10 @@
 module Emails
   module Projects
     def project_access_granted_email(user_project_id)
-      @users_project = UsersProject.find user_project_id
-      @project = @users_project.project
+      @project_member = ProjectMember.find user_project_id
+      @project = @project_member.project
       @target_url = project_url(@project)
-      mail(cc: @users_project.user.email,
+      mail(to: @project_member.user.email,
            subject: subject("Access to project was granted"))
     end
 
@@ -12,7 +12,7 @@ module Emails
       @user = User.find user_id
       @project = Project.find project_id
       @target_url = project_url(@project)
-      mail(cc: @user.email,
+      mail(to: @user.email,
            subject: subject("Project was moved"))
     end
 
@@ -32,7 +32,7 @@ module Emails
       end
 
       mail(from: sender(author_id),
-           cc: recipient,
+           to: recipient,
            subject: subject(@subject))
     end
   end

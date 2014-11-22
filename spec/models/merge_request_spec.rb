@@ -17,6 +17,7 @@
 #  target_project_id :integer          not null
 #  iid               :integer
 #  description       :text
+#  position          :integer          default(0)
 #
 
 require 'spec_helper'
@@ -28,8 +29,6 @@ describe MergeRequest do
   end
 
   describe "Mass assignment" do
-    it { should_not allow_mass_assignment_of(:author_id) }
-    it { should_not allow_mass_assignment_of(:project_id) }
   end
 
   describe "Respond to" do
@@ -119,5 +118,9 @@ describe MergeRequest do
     let(:subject) { create :merge_request, source_project: mproject, target_project: mproject }
     let(:backref_text) { "merge request !#{subject.iid}" }
     let(:set_mentionable_text) { ->(txt){ subject.title = txt } }
+  end
+
+  it_behaves_like 'a Taskable' do
+    let(:subject) { create :merge_request, :simple }
   end
 end
